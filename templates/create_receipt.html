@@ -5,7 +5,6 @@
     <title>Create Receipt</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <style>
-        /* General container styling to prevent overflow */
         .container {
             width: 100%;
             max-width: 1200px;
@@ -16,48 +15,57 @@
             border-radius: 8px;
             box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
             display: flex;
-            flex-direction: column;
-            align-items: center;
         }
 
-        /* Container for heading and grid to keep them together in a column */
+        .left-column {
+            width: 40%;
+            padding-right: 10px;
+            border-right: 1px solid #ddd;
+        }
+
+        .right-column {
+            width: 60%;
+            padding-left: 10px;
+        }
+
         .items-section {
-            width: 100%;
             text-align: center;
             margin-bottom: 20px;
         }
 
-        /* Item tiles container styled as a grid */
+        .filter-section {
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
         #itemTiles {
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
             justify-content: center;
-            margin-top: 10px;
         }
 
-        /* Item tile styling for grid display */
-        .item-tile {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            width: 120px;
-            height: 120px;
-            background-color: #f0f0f0;
-            border: 1px solid #ddd;
-            border-radius: 8px;
+        .item-container {
             text-align: center;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
+            width: 100%;
+            max-width: 120px;
+        }
+
+        .item-tile {
+            width: 100%;
+            height: 120px;
+            border-radius: 8px;
+            background-size: cover;
+            background-position: center;
             box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
+            cursor: pointer;
         }
 
-        .item-tile:hover {
-            background-color: #e0e0e0;
+        .item-name p {
+            font-size: 14px;
+            margin: 5px 0 0;
         }
 
-        /* Button styling */
         #generateReceiptButton, #sendReceiptButton, #downloadPOSButton {
             background-color: blue;
             color: white;
@@ -68,7 +76,6 @@
             margin-top: 20px;
         }
 
-        /* Table styling with scrollable overflow */
         #itemTableContainer {
             overflow-x: auto;
         }
@@ -79,17 +86,17 @@
             margin-top: 20px;
         }
 
-        #itemTable th, #itemTable td {
-            padding: 10px;
-            text-align: left;
-            border: 1px solid #ddd;
-            white-space: nowrap;
-        }
+            #itemTable th, #itemTable td {
+                padding: 10px;
+                text-align: left;
+                border: 1px solid #ddd;
+                white-space: nowrap;
+            }
 
-        #itemTable th {
-            background-color: #f2f2f2;
-            font-weight: bold;
-        }
+            #itemTable th {
+                background-color: #f2f2f2;
+                font-weight: bold;
+            }
 
         .remove-item {
             color: red;
@@ -97,49 +104,49 @@
             font-size: 18px;
         }
 
-        /* Quantity and LOT input styling */
         .amount-input, .lot-input {
             width: 100%;
             box-sizing: border-box;
             text-align: center;
         }
-
-        /* Responsive layout for tablet */
-        @media (min-width: 768px) and (orientation: landscape) {
-            .container {
-                display: flex;
-                flex-direction: row;
-                align-items: flex-start;
-            }
-
-            .items-section {
-                flex: 1;
-                max-width: 40%;
-            }
-
-            #selectedItemsSection {
-                flex: 1;
-                max-width: 60%;
-                padding-left: 20px;
-            }
-        }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- Container for heading and grid to keep them in the same column -->
-        <div class="items-section">
-            <h3>Products available</h3>
-            <div id="itemTiles">
-                {% for item in items %}
-                    <div class="item-tile" onclick="addItemToReceipt({{ item[0] }}, '{{ item[1] }}', {{ item[2] }}, '{{ item[3] }}')">
-                        {{ item[1] }}<br>{{ item[2] }} HUF
+        <!-- Left Column for Product Selection (40%) -->
+        <div class="left-column">
+            <!-- Category Filter Dropdown -->
+            <div class="filter-section">
+                <label for="categoryFilter">Filter by Category:</label>
+                <select id="categoryFilter" onchange="filterItemsByCategory()">
+                    <option value="all">All Categories</option>
+                    {% for category in categories %}
+                    <option value="{{ category[0] }}">{{ category[1] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+
+            <div class="items-section">
+                <h3>Products available</h3>
+                <div id="itemTiles">
+                    {% for item in items %}
+                    <div class="item-container" data-category-id="{{ item[4] }}">
+                        <div class="item-tile"
+                             onclick="addItemToReceipt({{ item[0] }}, '{{ item[1] }}', {{ item[2] }}, '{{ item[3] }}')"
+                             style="background-image: url('{{ item[5] }}');">
+                        </div>
+                        <div class="item-name">
+                            <p>{{ item[1][:30] }}{% if item[1]|length > 30 %}...{% endif %}</p>
+                        </div>
                     </div>
-                {% endfor %}
+                    {% endfor %}
+                </div>
             </div>
         </div>
 
-        <div id="selectedItemsSection">
+        <!-- Right Column for Selected Items and Receipt Generation (60%) -->
+        <div class="right-column">
             <h2>Selected Products</h2>
             <div id="itemTableContainer">
                 <table id="itemTable">
@@ -178,6 +185,20 @@
     </div>
 
     <script>
+        function filterItemsByCategory() {
+            const selectedCategory = document.getElementById('categoryFilter').value;
+            const items = document.querySelectorAll('.item-container');
+
+            items.forEach(item => {
+                const itemCategory = item.getAttribute('data-category-id');
+                if (selectedCategory === 'all' || itemCategory === selectedCategory) {
+                    item.style.display = 'block';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        }
+
         let selectedItems = [];
         let lastReceiptData = null;
 
@@ -213,14 +234,14 @@
                 const total = (item.price * item.quantity).toFixed(2);
 
                 return `<tr>
-                    <td>${item.name}</td>
-                    <td>${netPrice} HUF</td>
-                    <td>${vatAmount} HUF</td>
-                    <td><input type="number" class="amount-input" min="1" value="${item.quantity}" onchange="updateQuantity(${index}, this.value)"></td>
-                    <td>${total} HUF</td>
-                    <td><input type="text" class="lot-input" placeholder="Optional" onchange="updateLotNumber(${index}, this.value)" value="${item.lotNumber}"></td>
-                    <td><span class="remove-item" onclick="removeItem(${index})">&#128465;</span></td>
-                </tr>`;
+                            <td>${item.name}</td>
+                            <td>${netPrice} HUF</td>
+                            <td>${vatAmount} HUF</td>
+                            <td><input type="number" class="amount-input" min="1" value="${item.quantity}" onchange="updateQuantity(${index}, this.value)"></td>
+                            <td>${total} HUF</td>
+                            <td><input type="text" class="lot-input" placeholder="Optional" onchange="updateLotNumber(${index}, this.value)" value="${item.lotNumber}"></td>
+                            <td><span class="remove-item" onclick="removeItem(${index})">&#128465;</span></td>
+                        </tr>`;
             }).join('');
         }
 
@@ -235,7 +256,7 @@
         }
 
         function removeItem(index) {
-            selectedItems.splice(index, 1); // Remove the item at the specified index
+            selectedItems.splice(index, 1);
             displaySelectedItems();
             updateTotal();
             toggleGenerateButton();

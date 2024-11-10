@@ -3,6 +3,7 @@ import sqlite3
 import requests
 import logging
 import io
+import xml.etree.ElementTree as ET
 
 app = Flask(__name__)
 DATABASE = 'pos.db'
@@ -24,16 +25,177 @@ def query_db(query, args=(), one=False):
     conn.close()
     return (rv[0] if rv else None) if one else rv
 
+import sqlite3
+
 def init_db():
-    with sqlite3.connect(DATABASE) as conn:
+    with sqlite3.connect('pos.db') as conn:
         cur = conn.cursor()
-        cur.execute("CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE)")
-        cur.execute("CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, price REAL NOT NULL, vat TEXT NOT NULL DEFAULT '27%', category_id INTEGER, FOREIGN KEY (category_id) REFERENCES categories (id))")
+        # Create categories table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS categories (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL
+            )
+        """)
+        # Create items table with new columns
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS items (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                price REAL,
+                vat TEXT DEFAULT '27%',
+                category_id INTEGER,
+                image_url TEXT,
+                description TEXT,
+                FOREIGN KEY (category_id) REFERENCES categories (id)
+            )
+        """)
         conn.commit()
+
+API_KEY = 'XE3XXEMIECYR7C7ERXHAJ8NN5P5RX42M'
+BASE_URL = 'https://cafetiko.com/api/'
+
+def fetch_products():
+    url = f"{BASE_URL}products?ws_key={API_KEY}"
+    response = requests.get(url)
+    products = []
+
+    if response.status_code == 200:
+        root = ET.fromstring(response.content)
+        for product in root.findall('.//product'):
+            product_id = product.get('id')
+            product_details = fetch_product_details(product_id)
+            if product_details:
+                products.append(product_details)
+                logging.debug(f"Fetched product: {product_details}")
+            else:
+                logging.error(f"Failed to fetch details for product ID: {product_id}")
+    else:
+        logging.error("Failed to fetch products list from API")
+    
+    return products
+
+def fetch_product_details(product_id):
+    url = f"{BASE_URL}products/{product_id}?ws_key={API_KEY}"
+    response = requests.get(url)
+
+    if response.status_code == 200:
+        root = ET.fromstring(response.content)
+        
+        # Check if product is active
+        active_status = root.find('.//active').text
+        if active_status != '1':
+            logging.debug(f"Product ID {product_id} is not active. Skipping.")
+            return None
+
+        # Extract Hungarian name (language id="2")
+        name = root.find('.//name/language[@id="2"]').text
+
+        # Apply VAT multiplier to the price
+        price = float(root.find('.//price').text) * 1.27
+
+        # Extract other product details
+        category_id = int(root.find('.//id_category_default').text)
+        description = root.find('.//description/language[@id="2"]').text
+        image_id = root.find('.//id_default_image').text
+        image_url = f"{BASE_URL}images/products/{product_id}/{image_id}?ws_key={API_KEY}"
+
+        # Validate data
+        if not name or not price or not category_id:
+            logging.error(f"Missing essential field for product {product_id}. Skipping.")
+            return None
+
+        return {
+            'id': product_id,
+            'name': name,
+            'price': price,
+            'category_id': category_id,
+            'description': description,
+            'image_url': image_url
+        }
+    else:
+        logging.error(f"Failed to fetch product details for ID: {product_id}")
+    return None
+
+def fetch_categories_with_products():
+    url = f"{BASE_URL}categories?ws_key={API_KEY}"
+    response = requests.get(url)
+    categories = []
+
+    if response.status_code == 200:
+        root = ET.fromstring(response.content)
+        for category in root.findall('.//category'):
+            category_id = category.get('id')
+            product_url = f"{BASE_URL}products?filter[id_category_default]={category_id}&ws_key={API_KEY}"
+            product_response = requests.get(product_url)
+
+            # Only add categories with associated products
+            if product_response.status_code == 200:
+                product_root = ET.fromstring(product_response.content)
+                products = product_root.findall('.//product')
+                if products:  # Only add category if it has products
+                    category_name = fetch_category_name(category_id)
+                    categories.append({'id': category_id, 'name': category_name})
+    return categories
+
+
+@app.route('/update_catalog', methods=['POST'])
+def update_catalog_route():
+    try:
+        update_catalog()
+        return jsonify({"status": "success", "message": "Catalog updated successfully"})
+    except Exception as e:
+        logging.error("Error updating catalog: %s", e)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+def update_catalog():
+    products = fetch_products()
+    categories = fetch_categories_with_products()
+
+    with sqlite3.connect('pos.db') as conn:
+        cursor = conn.cursor()
+
+        # Clear old data
+        cursor.execute('DELETE FROM categories')
+        cursor.execute('DELETE FROM items')
+
+        # Insert categories with products only
+        for category in categories:
+            cursor.execute("INSERT INTO categories (id, name) VALUES (?, ?)", (category['id'], category['name']))
+            logging.debug(f"Inserted category: {category}")
+
+        # Insert products
+        for product in products:
+            if product:  # Only insert if product details are valid
+                cursor.execute("""
+                    INSERT INTO items (id, name, price, vat, category_id, image_url, description) 
+                    VALUES (?, ?, ?, '27%', ?, ?, ?)
+                """, (product['id'], product['name'], product['price'], product['category_id'], product['image_url'], product['description']))
+                logging.debug(f"Inserted item: {product}")
+
+        conn.commit()
+
+
+@app.route('/verify_data', methods=['GET'])
+def verify_data():
+    categories = query_db("SELECT * FROM categories")
+    items = query_db("SELECT * FROM items")
+    logging.debug(f"Categories in DB: {categories}")
+    logging.debug(f"Items in DB: {items}")
+    return jsonify({"categories": categories, "items": items})
+
+def fetch_category_name(category_id):
+    url = f"{BASE_URL}categories/{category_id}?ws_key={API_KEY}"
+    response = requests.get(url)
+
+    if response.status_code == 200:
+        root = ET.fromstring(response.content)
+        name = root.find('.//name/language').text
+        return name
+    return ""
 
 # Initialize the database
 init_db()
-
 # Main menu
 @app.route('/')
 def main_menu():
@@ -111,10 +273,12 @@ def delete_item(id):
     return jsonify({"status": "success", "message": "Item deleted successfully"})
 
 # Create receipt page
-@app.route('/create_receipt', methods=['GET'])
+@app.route('/create_receipt')
 def create_receipt_page():
     items = query_db("SELECT * FROM items")
-    return render_template('create_receipt.html', items=items)
+    categories = query_db("SELECT * FROM categories")
+    return render_template('create_receipt.html', items=items, categories=categories)
+
 
 @app.route('/create_receipt', methods=['POST'])
 def create_receipt():
