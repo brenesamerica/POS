@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Add Item</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Add New Item</h1>
+        <form action="{{ url_for('add_item') }}" method="post">
+            <label for="name">Item Name:</label>
+            <input type="text" id="name" name="name" required>
+
+            <label for="price">Price:</label>
+            <input type="number" id="price" name="price" min="0" step="0.01" required>
+
+            <label for="category_id">Category:</label>
+            <select id="category_id" name="category_id" required>
+                {% for category in categories %}
+                    <option value="{{ category[0] }}">{{ category[1] }}</option>
+                {% endfor %}
+            </select>
+
+            <label for="vat">VAT:</label>
+            <input type="text" id="vat" name="vat" value="27%" readonly>
+
+            <button type="submit">Add Item</button>
+        </form>
+        <button onclick="location.href='{{ url_for('manage_items') }}'">Back to Items</button>
+    </div>
+</body>
+</html>

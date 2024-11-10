@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Create Receipt</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        /* General container styling to prevent overflow */
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            margin: auto;
+            padding: 20px;
+            background-color: #ffffff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* Container for heading and grid to keep them together in a column */
+        .items-section {
+            width: 100%;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        /* Item tiles container styled as a grid */
+        #itemTiles {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 10px;
+        }
+
+        /* Item tile styling for grid display */
+        .item-tile {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 120px;
+            height: 120px;
+            background-color: #f0f0f0;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
+        }
+
+        .item-tile:hover {
+            background-color: #e0e0e0;
+        }
+
+        /* Button styling */
+        #generateReceiptButton, #sendReceiptButton, #downloadPOSButton {
+            background-color: blue;
+            color: white;
+            padding: 10px 20px;
+            font-size: 18px;
+            border: none;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+
+        /* Table styling with scrollable overflow */
+        #itemTableContainer {
+            overflow-x: auto;
+        }
+
+        #itemTable {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        #itemTable th, #itemTable td {
+            padding: 10px;
+            text-align: left;
+            border: 1px solid #ddd;
+            white-space: nowrap;
+        }
+
+        #itemTable th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+
+        .remove-item {
+            color: red;
+            cursor: pointer;
+            font-size: 18px;
+        }
+
+        /* Quantity and LOT input styling */
+        .amount-input, .lot-input {
+            width: 100%;
+            box-sizing: border-box;
+            text-align: center;
+        }
+
+        /* Responsive layout for tablet */
+        @media (min-width: 768px) and (orientation: landscape) {
+            .container {
+                display: flex;
+                flex-direction: row;
+                align-items: flex-start;
+            }
+
+            .items-section {
+                flex: 1;
+                max-width: 40%;
+            }
+
+            #selectedItemsSection {
+                flex: 1;
+                max-width: 60%;
+                padding-left: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Container for heading and grid to keep them in the same column -->
+        <div class="items-section">
+            <h3>Products available</h3>
+            <div id="itemTiles">
+                {% for item in items %}
+                    <div class="item-tile" onclick="addItemToReceipt({{ item[0] }}, '{{ item[1] }}', {{ item[2] }}, '{{ item[3] }}')">
+                        {{ item[1] }}<br>{{ item[2] }} HUF
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div id="selectedItemsSection">
+            <h2>Selected Products</h2>
+            <div id="itemTableContainer">
+                <table id="itemTable">
+                    <thead>
+                        <tr>
+                            <th>Item Name</th>
+                            <th>Net Price</th>
+                            <th>VAT</th>
+                            <th>Quantity</th>
+                            <th>Total</th>
+                            <th>LOT Number</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="itemList"></tbody>
+                </table>
+            </div>
+
+            <h3 id="totalDisplay" style="font-weight: bold;">Total: 0 HUF</h3>
+
+            <label for="discount">Discount (%):</label>
+            <input type="number" id="discount" value="0" min="0" max="100">
+            <button type="button" onclick="applyDiscount()">Apply Discount</button>
+
+            <label for="paymentMethod">Payment Method:</label>
+            <select id="paymentMethod" required>
+                <option value="cash">Cash</option>
+                <option value="bankcard">Bank Card</option>
+                <option value="wire_transfer">Wire Transfer</option>
+            </select>
+
+            <button type="button" id="generateReceiptButton" onclick="generateReceipt()" disabled>Generate Receipt</button>
+            <button id="downloadPOSButton" style="display: none;" onclick="downloadPOSPrint()">Download POS Print</button>
+            <button onclick="location.href='{{ url_for('main_menu') }}'">Back to Main Menu</button>
+        </div>
+    </div>
+
+    <script>
+        let selectedItems = [];
+        let lastReceiptData = null;
+
+        function addItemToReceipt(id, name, price, vat) {
+            const quantity = 1;
+            const itemVAT = 0.27;
+            const existingItem = selectedItems.find(item => item.id === id);
+
+            if (existingItem) {
+                existingItem.quantity += quantity;
+            } else {
+                const selectedItem = {
+                    id: id,
+                    name: name,
+                    price: price,
+                    vatRate: itemVAT,
+                    quantity: quantity,
+                    lotNumber: ""
+                };
+                selectedItems.push(selectedItem);
+            }
+
+            displaySelectedItems();
+            updateTotal();
+            toggleGenerateButton();
+        }
+
+        function displaySelectedItems() {
+            const itemList = document.getElementById('itemList');
+            itemList.innerHTML = selectedItems.map((item, index) => {
+                const netPrice = (item.price / 1.27).toFixed(2);
+                const vatAmount = (item.price - netPrice).toFixed(2);
+                const total = (item.price * item.quantity).toFixed(2);
+
+                return `<tr>
+                    <td>${item.name}</td>
+                    <td>${netPrice} HUF</td>
+                    <td>${vatAmount} HUF</td>
+                    <td><input type="number" class="amount-input" min="1" value="${item.quantity}" onchange="updateQuantity(${index}, this.value)"></td>
+                    <td>${total} HUF</td>
+                    <td><input type="text" class="lot-input" placeholder="Optional" onchange="updateLotNumber(${index}, this.value)" value="${item.lotNumber}"></td>
+                    <td><span class="remove-item" onclick="removeItem(${index})">&#128465;</span></td>
+                </tr>`;
+            }).join('');
+        }
+
+        function updateQuantity(index, newQuantity) {
+            selectedItems[index].quantity = parseInt(newQuantity, 10);
+            displaySelectedItems();
+            updateTotal();
+        }
+
+        function updateLotNumber(index, value) {
+            selectedItems[index].lotNumber = value;
+        }
+
+        function removeItem(index) {
+            selectedItems.splice(index, 1); // Remove the item at the specified index
+            displaySelectedItems();
+            updateTotal();
+            toggleGenerateButton();
+        }
+
+        function applyDiscount() {
+            const discountPercent = parseFloat(document.getElementById('discount').value);
+            if (discountPercent > 0) {
+                const total = selectedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+                const discountAmount = -((total * discountPercent) / 100).toFixed(2);
+
+                const existingDiscount = selectedItems.find(item => item.id === "discount");
+                if (existingDiscount) {
+                    existingDiscount.price = discountAmount;
+                } else {
+                    selectedItems.push({
+                        id: "discount",
+                        name: `${discountPercent}% Discount`,
+                        price: discountAmount,
+                        vatRate: 0,
+                        quantity: 1
+                    });
+                }
+
+                displaySelectedItems();
+                updateTotal();
+                toggleGenerateButton();
+            }
+        }
+
+        function updateTotal() {
+            const total = selectedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+            document.getElementById('totalDisplay').innerText = `Total: ${total.toFixed(2)} HUF`;
+        }
+
+        function toggleGenerateButton() {
+            const generateButton = document.getElementById('generateReceiptButton');
+            generateButton.disabled = selectedItems.length === 0;
+        }
+
+        async function generateReceipt() {
+            const discount = parseFloat(document.getElementById('discount').value);
+            const paymentMethod = document.getElementById('paymentMethod').value;
+            const electronic = document.getElementById('electronicReceipt') ? document.getElementById('electronicReceipt').checked : false;
+            const emails = electronic ? [document.getElementById('recipientEmail').value] : [];
+            const name = document.getElementById('recipientName') ? document.getElementById('recipientName').value : "";
+
+            const itemDescriptions = selectedItems.map(item => {
+                const lotText = item.lotNumber ? ` - LOT: ${item.lotNumber}` : "";
+                return `${item.quantity} x ${item.name}${lotText}`;
+            }).join(", ");
+
+            const totalPrice = selectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+            const payload = {
+                items: [{
+                    name: itemDescriptions,
+                    price: totalPrice,
+                    quantity: 1
+                }],
+                discount,
+                payment_method: paymentMethod,
+                electronic,
+                emails,
+                name
+            };
+
+            try {
+                const response = await fetch("/create_receipt", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+                if (result.status === "success") {
+                    lastReceiptData = result.data;
+                    document.getElementById("downloadPOSButton").style.display = "inline";
+                    alert("Receipt created successfully.");
+                } else {
+                    console.error("Error creating receipt:", result.message);
+                    alert("Failed to create receipt: " + JSON.stringify(result.message));
+                }
+            } catch (error) {
+                console.error("Error during fetch:", error);
+                alert("An error occurred while creating the receipt.");
+            }
+        }
+
+        function downloadPOSPrint() {
+            window.location.href = "/download_pos_print";
+        }
+    </script>
+</body>
+</html>
