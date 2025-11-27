@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ session[1] }} - Market Session Detail</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        .top-nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: var(--shadow-md);
+            z-index: 100;
+        }
+        .top-nav .nav-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: var(--gray-800);
+        }
+        .top-nav .nav-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .top-nav .nav-btn {
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .top-nav .nav-btn.secondary {
+            background: var(--gray-100);
+            color: var(--gray-700);
+            border: 1px solid var(--gray-200);
+        }
+        .top-nav .nav-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow);
+        }
+        body {
+            padding-top: 70px;
+        }
+        .container {
+            margin-top: 20px;
+            max-width: 1400px;
+        }
+
+        .session-header {
+            margin-bottom: 24px;
+        }
+        .session-header h1 {
+            font-size: 1.5rem;
+            margin: 0 0 8px 0;
+        }
+        .session-header .meta {
+            color: var(--gray-500);
+            font-size: 0.9rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: white;
+            border-radius: var(--radius);
+            padding: 20px;
+            box-shadow: var(--shadow);
+        }
+        .stat-card .label {
+            font-size: 0.75rem;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 4px;
+        }
+        .stat-card .value {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--gray-800);
+        }
+        .stat-card .value.success { color: var(--success); }
+        .stat-card .value.primary { color: var(--primary); }
+        .stat-card .value.warning { color: var(--warning); }
+
+        .section {
+            margin-bottom: 30px;
+        }
+        .section-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--gray-800);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid var(--gray-100);
+        }
+        .tab {
+            padding: 12px 20px;
+            cursor: pointer;
+            font-weight: 500;
+            color: var(--gray-500);
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.2s;
+        }
+        .tab:hover {
+            color: var(--gray-700);
+        }
+        .tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            background: white;
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: var(--shadow);
+        }
+        table th {
+            background: var(--gray-50);
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--gray-600);
+            font-weight: 600;
+        }
+        table td {
+            padding: 12px 16px;
+            border-top: 1px solid var(--gray-100);
+            font-size: 0.9rem;
+        }
+        table tr:hover td {
+            background: var(--gray-50);
+        }
+
+        .payment-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .payment-badge.cash {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+        .payment-badge.card {
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--primary);
+        }
+        .payment-badge.other {
+            background: var(--gray-100);
+            color: var(--gray-600);
+        }
+
+        .stock-bar {
+            display: flex;
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            background: var(--gray-200);
+            width: 100px;
+        }
+        .stock-bar .sold {
+            background: var(--success);
+        }
+        .stock-bar .remaining {
+            background: var(--gray-300);
+        }
+
+        .items-list {
+            font-size: 0.85rem;
+            color: var(--gray-600);
+        }
+        .items-list .item-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 2px 0;
+            border-bottom: 1px solid var(--gray-100);
+        }
+        .items-list .item-row:last-child {
+            border-bottom: none;
+        }
+        .items-list .item-name {
+            flex: 1;
+        }
+        .items-list .item-qty {
+            color: var(--gray-500);
+            margin-left: 8px;
+            white-space: nowrap;
+        }
+        .items-list .item-price {
+            font-weight: 500;
+            margin-left: 12px;
+            white-space: nowrap;
+        }
+
+        .totals-row td {
+            font-weight: 600;
+            background: var(--gray-50) !important;
+        }
+
+        .filters-bar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .filters-bar input {
+            padding: 8px 12px;
+            border: 2px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="top-nav">
+        <span class="nav-title">📊 Session Details</span>
+        <div class="nav-actions">
+            <a href="{{ url_for('market_history') }}" class="nav-btn secondary">← Back to History</a>
+            <a href="{{ url_for('main_menu') }}" class="nav-btn secondary">Home</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="session-header">
+            <h1>{{ session[1] }}</h1>
+            <div class="meta">
+                Started: {{ session[2][:16] if session[2] else 'Unknown' }}
+                {% if session[3] %} | Closed: {{ session[3][:16] }}{% else %} | <strong style="color: var(--success);">Active Session</strong>{% endif %}
+            </div>
+        </div>
+
+        <!-- Summary Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="label">Initial Cash</div>
+                <div class="value">{{ "{:,.0f}".format(summary.initial_cash) }} Ft</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Cash Sales</div>
+                <div class="value success">{{ "{:,.0f}".format(summary.cash_sales) }} Ft</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Card Sales</div>
+                <div class="value primary">{{ "{:,.0f}".format(summary.card_sales) }} Ft</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Total Sales</div>
+                <div class="value">{{ "{:,.0f}".format(summary.total_sales) }} Ft</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Expected Cash</div>
+                <div class="value warning">{{ "{:,.0f}".format(summary.expected_cash) }} Ft</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Transactions</div>
+                <div class="value">{{ summary.transaction_count }}</div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('stock')">Stock Tracking</div>
+            <div class="tab" onclick="switchTab('sales')">Sales Log</div>
+        </div>
+
+        <!-- Stock Tab -->
+        <div id="stock-tab" class="tab-content active">
+            <div class="filters-bar">
+                <input type="text" id="stockSearch" placeholder="🔍 Search products..." oninput="filterStock()">
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>LOT</th>
+                        <th>Prepared</th>
+                        <th>Sold</th>
+                        <th>Remaining</th>
+                        <th>Revenue</th>
+                        <th>Progress</th>
+                    </tr>
+                </thead>
+                <tbody id="stockTable">
+                    {% set total_prepared = namespace(value=0) %}
+                    {% set total_sold = namespace(value=0) %}
+                    {% set total_remaining = namespace(value=0) %}
+                    {% set total_revenue = namespace(value=0) %}
+                    {% for item in stock %}
+                    {% set total_prepared.value = total_prepared.value + item[2] %}
+                    {% set total_sold.value = total_sold.value + item[4] %}
+                    {% set total_remaining.value = total_remaining.value + item[3] %}
+                    {% set total_revenue.value = total_revenue.value + (item[4] * item[5]) %}
+                    <tr data-name="{{ item[0]|lower }}">
+                        <td>{{ item[0] }}</td>
+                        <td><code>{{ item[1] }}</code></td>
+                        <td>{{ item[2] }}</td>
+                        <td style="color: var(--success); font-weight: 600;">{{ item[4] }}</td>
+                        <td>{{ item[3] }}</td>
+                        <td>{{ "{:,.0f}".format(item[4] * item[5]) }} Ft</td>
+                        <td>
+                            <div class="stock-bar">
+                                <div class="sold" style="width: {{ (item[4] / item[2] * 100) if item[2] > 0 else 0 }}%"></div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="totals-row">
+                        <td colspan="2"><strong>TOTAL</strong></td>
+                        <td>{{ total_prepared.value }}</td>
+                        <td style="color: var(--success);">{{ total_sold.value }}</td>
+                        <td>{{ total_remaining.value }}</td>
+                        <td>{{ "{:,.0f}".format(total_revenue.value) }} Ft</td>
+                        <td></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Sales Tab -->
+        <div id="sales-tab" class="tab-content">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Amount</th>
+                        <th>Payment</th>
+                        <th>Items</th>
+                        <th>Receipt ID</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sale in sales %}
+                    <tr>
+                        <td>{{ sale[1][11:16] if sale[1] else '-' }}</td>
+                        <td style="font-weight: 600;">{{ "{:,.0f}".format(sale[2]) }} Ft</td>
+                        <td>
+                            {% if sale[3] == 'cash' %}
+                            <span class="payment-badge cash">Cash</span>
+                            {% elif sale[3] == 'bankcard' %}
+                            <span class="payment-badge card">Card</span>
+                            {% else %}
+                            <span class="payment-badge other">{{ sale[3] }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="items-list" data-items="{{ sale[4] | e if sale[4] else '[]' }}">
+                                <!-- Items will be rendered by JavaScript -->
+                            </div>
+                        </td>
+                        <td><code>{{ sale[5] if sale[5] else '-' }}</code></td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" style="text-align: center; color: var(--gray-500); padding: 40px;">
+                            No sales recorded in this session
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        function switchTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(tabName + '-tab').classList.add('active');
+        }
+
+        function filterStock() {
+            const searchTerm = document.getElementById('stockSearch').value.toLowerCase();
+            const rows = document.querySelectorAll('#stockTable tr:not(.totals-row)');
+
+            rows.forEach(row => {
+                const name = row.dataset.name || '';
+                if (name.includes(searchTerm)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+
+        // Render sale items in a friendly format
+        function renderSaleItems() {
+            document.querySelectorAll('.items-list').forEach(container => {
+                const itemsJson = container.dataset.items;
+                if (!itemsJson || itemsJson === '[]') {
+                    container.innerHTML = '<span style="color: var(--gray-400);">-</span>';
+                    return;
+                }
+
+                try {
+                    const items = JSON.parse(itemsJson);
+                    if (!Array.isArray(items) || items.length === 0) {
+                        container.innerHTML = '<span style="color: var(--gray-400);">-</span>';
+                        return;
+                    }
+
+                    const html = items.map(item => {
+                        const name = item.name || 'Unknown';
+                        const qty = item.quantity || 1;
+                        const price = item.price || 0;
+                        const total = Math.round(qty * price);
+                        const lotInfo = item.lotNumber ? ` <span style="color: var(--gray-400); font-size: 0.75rem;">(${item.lotNumber})</span>` : '';
+
+                        return `
+                            <div class="item-row">
+                                <span class="item-name">${name}${lotInfo}</span>
+                                <span class="item-qty">×${qty}</span>
+                                <span class="item-price">${total.toLocaleString()} Ft</span>
+                            </div>
+                        `;
+                    }).join('');
+
+                    container.innerHTML = html;
+                } catch (e) {
+                    console.error('Error parsing items:', e);
+                    container.innerHTML = '<span style="color: var(--gray-400);">Error loading items</span>';
+                }
+            });
+        }
+
+        // Run on page load
+        document.addEventListener('DOMContentLoaded', renderSaleItems);
+    </script>
+</body>
+</html>

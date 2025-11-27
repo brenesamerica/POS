@@ -1,0 +1,1227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Market Mode - Café Tiko POS</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Environment indicator */
+        .env-indicator {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 4px 12px;
+            text-align: center;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            z-index: 1000;
+        }
+        .env-indicator.test {
+            background: var(--warning);
+            color: var(--gray-900);
+        }
+        .env-indicator.prod {
+            background: var(--danger);
+            color: white;
+        }
+        body {
+            padding-top: 28px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1800px;
+            margin: auto;
+            padding: 20px;
+            background-color: #ffffff;
+            display: flex;
+        }
+        .left-column {
+            width: 40%;
+            padding-right: 15px;
+            border-right: 1px solid #ddd;
+            max-height: calc(90vh - 28px);
+            overflow-y: auto;
+        }
+        .right-column {
+            width: 60%;
+            padding-left: 15px;
+        }
+        .session-banner {
+            background: linear-gradient(135deg, var(--success) 0%, var(--success-dark) 100%);
+            color: white;
+            padding: 14px 20px;
+            border-radius: var(--radius);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 500;
+            box-shadow: var(--shadow);
+        }
+        .session-banner a {
+            color: white;
+            opacity: 0.9;
+            text-decoration: none;
+            font-size: 0.875rem;
+        }
+        .session-banner a:hover {
+            opacity: 1;
+        }
+        .section-title {
+            padding: 12px 16px;
+            margin: 20px 0 12px 0;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .section-title.coffee {
+            background: linear-gradient(135deg, var(--coffee-light) 0%, var(--coffee) 100%);
+            color: white;
+        }
+        .section-title.prepared {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+        }
+        .items-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        /* Collapsible category sections */
+        .category-section {
+            margin-bottom: 8px;
+        }
+        .category-header {
+            padding: 12px 16px;
+            background: var(--gray-100);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: var(--gray-700);
+            transition: all 0.2s;
+            border: 2px solid transparent;
+        }
+        .category-header:hover {
+            background: var(--gray-200);
+        }
+        .category-header.expanded {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary-dark);
+        }
+        .category-header .arrow {
+            transition: transform 0.2s;
+        }
+        .category-header.expanded .arrow {
+            transform: rotate(180deg);
+        }
+        .category-header .item-count {
+            background: rgba(255,255,255,0.2);
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            margin-left: 8px;
+        }
+        .category-header:not(.expanded) .item-count {
+            background: var(--gray-300);
+            color: var(--gray-600);
+        }
+        .category-items {
+            display: none;
+            padding: 12px 0;
+        }
+        .category-items.expanded {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .item-tile {
+            width: 120px;
+            text-align: center;
+            cursor: pointer;
+            border: 2px solid var(--gray-200);
+            border-radius: var(--radius);
+            padding: 10px 8px;
+            position: relative;
+            background: white;
+            transition: all 0.2s ease;
+        }
+        .item-tile:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+        .item-tile:active {
+            transform: scale(0.98);
+        }
+        .item-tile.out-of-stock {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .item-tile.out-of-stock:hover {
+            transform: none;
+            border-color: var(--gray-200);
+            box-shadow: none;
+        }
+        .item-tile img {
+            width: 85px;
+            height: 85px;
+            object-fit: cover;
+            border-radius: var(--radius-sm);
+        }
+        .item-tile .placeholder-img {
+            width: 85px;
+            height: 85px;
+            background: linear-gradient(135deg, var(--gray-100) 0%, var(--gray-200) 100%);
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            margin: 0 auto;
+        }
+        .item-tile .name {
+            font-size: 0.75rem;
+            margin-top: 8px;
+            height: 34px;
+            overflow: hidden;
+            color: var(--gray-700);
+            font-weight: 500;
+            line-height: 1.3;
+        }
+        .item-tile .price {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--success);
+            margin-top: 4px;
+        }
+        .item-tile .stock-badge {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            background: var(--primary);
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+        .item-tile .stock-badge.low {
+            background: var(--warning);
+            color: var(--gray-900);
+        }
+        .item-tile .stock-badge.out {
+            background: var(--danger);
+        }
+        .item-tile .lot-badge {
+            font-size: 0.65rem;
+            color: var(--gray-500);
+            margin-top: 2px;
+        }
+
+        /* LOT Selection Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.6);
+            backdrop-filter: blur(4px);
+        }
+        .modal-content {
+            background: white;
+            margin: 10% auto;
+            padding: 28px;
+            border-radius: var(--radius-lg);
+            width: 420px;
+            max-width: 90%;
+            box-shadow: var(--shadow-lg);
+            animation: modalSlide 0.3s ease;
+        }
+        @keyframes modalSlide {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .modal-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: var(--gray-800);
+        }
+        .lot-option {
+            padding: 14px 16px;
+            border: 2px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .lot-option:hover {
+            border-color: var(--primary);
+            background: var(--gray-50);
+        }
+        .lot-option .lot-number {
+            font-weight: 600;
+            color: var(--gray-800);
+        }
+        .lot-option .lot-stock {
+            color: var(--gray-500);
+            font-size: 0.875rem;
+            margin-top: 4px;
+        }
+
+        /* Selected Items Table */
+        #itemTable {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin-top: 15px;
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: var(--shadow);
+        }
+        #itemTable th, #itemTable td {
+            padding: 10px 10px;
+            text-align: left;
+            font-size: 0.9rem;
+        }
+        .discount-select {
+            padding: 6px 8px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-size: 0.8rem;
+            background: white;
+            cursor: pointer;
+        }
+        .discount-select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        .item-discount-applied {
+            color: var(--success);
+            font-weight: 600;
+        }
+        .item-original-price {
+            text-decoration: line-through;
+            color: var(--gray-400);
+            font-size: 0.8rem;
+            margin-right: 4px;
+        }
+        #itemTable th {
+            background: var(--gray-50);
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--gray-600);
+            border-bottom: 2px solid var(--gray-200);
+        }
+        #itemTable td {
+            border-bottom: 1px solid var(--gray-100);
+        }
+        #itemTable tr:last-child td {
+            border-bottom: none;
+        }
+        .remove-item {
+            color: var(--danger);
+            cursor: pointer;
+            font-size: 20px;
+            transition: transform 0.2s;
+        }
+        .remove-item:hover {
+            transform: scale(1.2);
+        }
+        .quantity-input {
+            width: 60px;
+            text-align: center;
+            padding: 8px !important;
+            border-radius: var(--radius-sm) !important;
+        }
+
+        /* Form Layout */
+        .form-row {
+            display: flex;
+            gap: 12px;
+            margin: 16px 0;
+        }
+        .form-group {
+            flex: 1;
+        }
+        .form-group label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--gray-600);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        .form-group select, .form-group input {
+            width: 100%;
+            padding: 12px 14px;
+            border: 2px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-size: 1rem;
+            background: white;
+            transition: border-color 0.2s;
+        }
+        .form-group select:focus, .form-group input:focus {
+            border-color: var(--primary);
+            outline: none;
+        }
+
+        /* Email Input with Clear Button */
+        .email-input-wrapper {
+            display: flex;
+            align-items: stretch;
+            border: 2px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            transition: border-color 0.2s;
+        }
+        .email-input-wrapper:focus-within {
+            border-color: var(--primary);
+        }
+        .email-input-wrapper input {
+            flex: 1;
+            padding: 12px 14px;
+            border: none;
+            font-size: 1rem;
+            min-width: 0;
+        }
+        .email-input-wrapper input:focus {
+            outline: none;
+        }
+        .clear-email-btn {
+            width: 44px;
+            background: var(--danger);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+            transition: background 0.2s;
+            flex-shrink: 0;
+        }
+        .clear-email-btn:hover {
+            background: #dc2626;
+        }
+
+        /* Action Buttons */
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .action-buttons .btn {
+            flex: 1;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 14px 28px;
+            border: none;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            margin-right: 10px;
+            transition: all 0.2s;
+        }
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+        }
+        .btn-success {
+            background: linear-gradient(135deg, var(--success) 0%, var(--success-dark) 100%);
+            color: white;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+        }
+        .btn-secondary {
+            background: var(--gray-200);
+            color: var(--gray-700);
+        }
+        .btn:disabled {
+            background: var(--gray-300);
+            color: var(--gray-500);
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        #totalDisplay {
+            font-size: 2rem;
+            font-weight: 700;
+            margin: 20px 0;
+            color: var(--gray-900);
+        }
+
+        .filter-section {
+            margin-bottom: 12px;
+        }
+        .filter-section select {
+            padding: 10px 14px;
+            border-radius: var(--radius-sm);
+            border: 2px solid var(--gray-200);
+        }
+
+        .right-column h2 {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* Search box */
+        .search-box {
+            margin-bottom: 15px;
+        }
+        .search-box input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+        .search-box input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        .search-box input::placeholder {
+            color: var(--gray-400);
+        }
+
+        /* Multiple LOT indicator */
+        .lot-count-badge {
+            position: absolute;
+            top: 6px;
+            left: 6px;
+            background: var(--primary);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 8px;
+            font-size: 0.65rem;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <!-- Environment Indicator -->
+    <div class="env-indicator {{ 'test' if billingo_env == 'test' else 'prod' }}">
+        {% if billingo_env == 'test' %}
+            TESZT környezet
+        {% else %}
+            Élő rendszer
+        {% endif %}
+    </div>
+
+    <div class="container">
+        <!-- Left Column: Product Selection -->
+        <div class="left-column">
+            <div class="session-banner">
+                <span>{{ active_session[1] }}</span>
+                <a href="/prepare_market" style="color: white;">Edit Session</a>
+            </div>
+
+            <!-- Search Box -->
+            <div class="search-box">
+                <input type="text" id="productSearch" placeholder="🔍 Search products..." oninput="filterProducts()">
+            </div>
+
+            <!-- Prepared Products Section - Grouped by Category -->
+            <div class="section-title prepared">Prepared Products</div>
+            <div id="preparedCategories">
+                <!-- Categories rendered via JavaScript -->
+            </div>
+
+            <!-- Coffee Shop Section -->
+            {% if coffee_items %}
+            <div class="section-title coffee">☕ Coffee Shop</div>
+            <div class="filter-section">
+                <select id="coffeeFilter" onchange="filterCoffeeItems()">
+                    <option value="all">All Coffee Items</option>
+                    {% for cat in coffee_categories %}
+                    <option value="{{ cat[0] }}">{{ cat[1] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="items-grid" id="coffeeItems">
+                {% for item in coffee_items %}
+                <div class="item-tile coffee-item" data-category="{{ item[5] }}"
+                     onclick="addCoffeeItem({{ item[0] }}, '{{ item[1] }}', {{ item[2] }}, '{{ item[3] }}')">
+                    {% if item[4] %}
+                    <img src="{{ item[4] }}" alt="{{ item[1] }}">
+                    {% else %}
+                    <div class="placeholder-img">☕</div>
+                    {% endif %}
+                    <div class="name">{{ item[1][:25] }}{% if item[1]|length > 25 %}...{% endif %}</div>
+                    <div class="price">{{ "%.0f"|format(item[2]) }} Ft</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Right Column: Selected Items & Checkout -->
+        <div class="right-column">
+            <h2>🧾 Current Sale</h2>
+
+            <table id="itemTable">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Price</th>
+                        <th>Qty</th>
+                        <th>Discount</th>
+                        <th>Total</th>
+                        <th>LOT</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="itemList"></tbody>
+            </table>
+
+            <div id="totalDisplay">Total: 0 Ft</div>
+            <div id="discountDisplay" style="display: none; color: var(--gray-500); font-size: 0.9rem; margin-top: -10px;"></div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="paymentMethod">Payment</label>
+                    <select id="paymentMethod">
+                        <option value="cash">💵 Cash</option>
+                        <option value="bankcard">💳 Card</option>
+                        <option value="wire_transfer">🏦 Transfer</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="discountSelect">Discount</label>
+                    <select id="discountSelect" onchange="applyDiscount()">
+                        <option value="0">No discount</option>
+                        <option value="5">5%</option>
+                        <option value="10">10%</option>
+                        <option value="15">15%</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="recipientEmail">Receipt Email</label>
+                <div class="email-input-wrapper">
+                    <input type="email" id="recipientEmail" value="valaki@valaki.com" placeholder="Email for receipt">
+                    <button type="button" class="clear-email-btn" onclick="clearEmail()" title="Clear email">✕</button>
+                </div>
+            </div>
+
+            <div class="action-buttons">
+                <button class="btn btn-success" id="generateReceiptBtn" onclick="generateReceipt()" disabled>
+                    Generate Receipt
+                </button>
+                <button class="btn btn-secondary" onclick="location.href='{{ url_for('main_menu') }}'">
+                    Back to Menu
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LOT Selection Modal -->
+    <div id="lotModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-title">Select LOT Number</div>
+            <div id="lotOptions"></div>
+            <button class="btn btn-secondary" onclick="closeLotModal()">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        let selectedItems = [];
+        let currentItemForLot = null;
+        let currentDiscount = 0;
+
+        // Market items data for LOT lookup
+        const marketItemsData = {};
+        {% for item in market_items %}
+        if (!marketItemsData[{{ item[1] }}]) {
+            marketItemsData[{{ item[1] }}] = [];
+        }
+        marketItemsData[{{ item[1] }}].push({
+            marketSessionItemId: {{ item[0] }},
+            itemId: {{ item[1] }},
+            lotNumber: '{{ item[2] }}',
+            remaining: {{ item[3] }},
+            name: '{{ item[4]|e }}',
+            price: {{ item[5] }},
+            vat: '{{ item[6] }}',
+            image: '{{ item[7] or "" }}',
+            categoryName: '{{ item[8] or "Uncategorized" }}',
+            categoryId: {{ item[9] or 0 }}
+        });
+        {% endfor %}
+
+        // Market categories
+        const marketCategories = [
+            {% for cat in market_categories %}
+            { id: {{ cat[0] or 0 }}, name: '{{ cat[1] or "Uncategorized" }}' },
+            {% endfor %}
+        ];
+
+        // Group products by itemId for display
+        function getGroupedProducts() {
+            const grouped = {};
+            for (const itemId in marketItemsData) {
+                const lots = marketItemsData[itemId];
+                if (lots.length > 0) {
+                    const firstLot = lots[0];
+                    const totalStock = lots.reduce((sum, lot) => sum + lot.remaining, 0);
+                    grouped[itemId] = {
+                        itemId: parseInt(itemId),
+                        name: firstLot.name,
+                        price: firstLot.price,
+                        vat: firstLot.vat,
+                        image: firstLot.image,
+                        totalStock: totalStock,
+                        lotCount: lots.length,
+                        categoryName: firstLot.categoryName,
+                        categoryId: firstLot.categoryId
+                    };
+                }
+            }
+            return grouped;
+        }
+
+        // Group products by category
+        function getProductsByCategory() {
+            const grouped = getGroupedProducts();
+            const products = Object.values(grouped);
+            const byCategory = {};
+
+            products.forEach(product => {
+                const catName = product.categoryName || 'Uncategorized';
+                if (!byCategory[catName]) {
+                    byCategory[catName] = [];
+                }
+                byCategory[catName].push(product);
+            });
+
+            return byCategory;
+        }
+
+        // Render prepared products grouped by category
+        function renderPreparedProducts(searchTerm = '') {
+            const container = document.getElementById('preparedCategories');
+            const byCategory = getProductsByCategory();
+            const categoryNames = Object.keys(byCategory).sort();
+
+            if (categoryNames.length === 0) {
+                container.innerHTML = `<p style="color: var(--gray-500); padding: 20px;">
+                    No prepared products. <a href="/prepare_market">Prepare some products first.</a>
+                </p>`;
+                return;
+            }
+
+            let html = '';
+            categoryNames.forEach(catName => {
+                let products = byCategory[catName];
+
+                // Filter by search term
+                if (searchTerm) {
+                    products = products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
+                }
+
+                if (products.length === 0) return;
+
+                const totalItems = products.reduce((sum, p) => sum + p.totalStock, 0);
+                const isExpanded = searchTerm ? true : false; // Auto-expand when searching
+
+                html += `
+                    <div class="category-section" data-category="${catName.toLowerCase()}">
+                        <div class="category-header ${isExpanded ? 'expanded' : ''}" onclick="toggleCategory(this)">
+                            <span>
+                                ${catName}
+                                <span class="item-count">${products.length} products / ${totalItems} items</span>
+                            </span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div class="category-items ${isExpanded ? 'expanded' : ''}">
+                            ${products.map(product => renderProductTile(product)).join('')}
+                        </div>
+                    </div>
+                `;
+            });
+
+            if (!html) {
+                html = `<p style="color: var(--gray-500); padding: 20px;">No products match your search.</p>`;
+            }
+
+            container.innerHTML = html;
+        }
+
+        function renderProductTile(product) {
+            const stockClass = product.totalStock <= 2 ? 'low' : '';
+            const imageHtml = product.image
+                ? `<img src="${product.image}" alt="${product.name}">`
+                : `<div class="placeholder-img">📦</div>`;
+            const lotBadge = product.lotCount > 1
+                ? `<span class="lot-count-badge">${product.lotCount} LOTs</span>`
+                : '';
+            const displayName = product.name.length > 25
+                ? product.name.substring(0, 25) + '...'
+                : product.name;
+
+            return `
+                <div class="item-tile ${product.totalStock === 0 ? 'out-of-stock' : ''}"
+                     onclick="selectPreparedItem(${product.itemId}, '${product.name.replace(/'/g, "\\'")}', ${product.price}, '${product.vat}')"
+                     data-item-id="${product.itemId}"
+                     data-name="${product.name.toLowerCase()}">
+                    ${lotBadge}
+                    <span class="stock-badge ${stockClass}">${product.totalStock}</span>
+                    ${imageHtml}
+                    <div class="name">${displayName}</div>
+                    <div class="price">${Math.round(product.price)} Ft</div>
+                </div>
+            `;
+        }
+
+        function toggleCategory(header) {
+            header.classList.toggle('expanded');
+            const items = header.nextElementSibling;
+            items.classList.toggle('expanded');
+        }
+
+        // Filter products by search
+        function filterProducts() {
+            const searchTerm = document.getElementById('productSearch').value;
+            renderPreparedProducts(searchTerm);
+
+            // Also filter coffee items
+            const coffeeItems = document.querySelectorAll('.coffee-item');
+            coffeeItems.forEach(item => {
+                const name = item.querySelector('.name').textContent.toLowerCase();
+                if (searchTerm && !name.includes(searchTerm.toLowerCase())) {
+                    item.style.display = 'none';
+                } else {
+                    item.style.display = 'block';
+                }
+            });
+        }
+
+        // Initialize products on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            renderPreparedProducts();
+        });
+
+        function selectPreparedItem(itemId, name, price, vat) {
+            const lots = marketItemsData[itemId];
+            if (!lots || lots.length === 0) {
+                console.log('No lots found for item', itemId);
+                return;
+            }
+
+            // Filter to only lots with remaining stock
+            const availableLots = lots.filter(lot => lot.remaining > 0);
+            if (availableLots.length === 0) {
+                showToast('No stock available for this item', 'error');
+                return;
+            }
+
+            if (availableLots.length === 1) {
+                // Only one LOT with stock, add directly
+                addPreparedItemWithLot(availableLots[0]);
+            } else {
+                // Multiple LOTs, show modal
+                showLotModal(itemId, name, price, vat, availableLots);
+            }
+        }
+
+        function applyDiscount() {
+            currentDiscount = parseInt(document.getElementById('discountSelect').value) || 0;
+            updateTotal();
+        }
+
+        function showLotModal(itemId, name, price, vat, lots) {
+            currentItemForLot = { itemId, name, price, vat };
+            const optionsDiv = document.getElementById('lotOptions');
+            optionsDiv.innerHTML = lots.filter(lot => lot.remaining > 0).map(lot => `
+                <div class="lot-option" onclick="selectLot(${lot.marketSessionItemId}, '${lot.lotNumber}', ${lot.remaining})">
+                    <div class="lot-number">LOT: ${lot.lotNumber}</div>
+                    <div class="lot-stock">Available: ${lot.remaining}</div>
+                </div>
+            `).join('');
+            document.getElementById('lotModal').style.display = 'block';
+        }
+
+        function closeLotModal() {
+            document.getElementById('lotModal').style.display = 'none';
+            currentItemForLot = null;
+        }
+
+        function selectLot(marketSessionItemId, lotNumber, remaining) {
+            if (!currentItemForLot) return;
+
+            const lot = marketItemsData[currentItemForLot.itemId].find(l => l.marketSessionItemId === marketSessionItemId);
+            if (lot) {
+                addPreparedItemWithLot(lot);
+            }
+            closeLotModal();
+        }
+
+        function addPreparedItemWithLot(lot) {
+            const existingIndex = selectedItems.findIndex(
+                item => item.marketSessionItemId === lot.marketSessionItemId
+            );
+
+            if (existingIndex >= 0) {
+                // Check if we can add more
+                if (selectedItems[existingIndex].quantity < lot.remaining) {
+                    selectedItems[existingIndex].quantity++;
+                } else {
+                    alert('No more stock available for this LOT');
+                    return;
+                }
+            } else {
+                selectedItems.push({
+                    marketSessionItemId: lot.marketSessionItemId,
+                    itemId: lot.itemId,
+                    name: lot.name,
+                    price: lot.price,
+                    vat: lot.vat,
+                    quantity: 1,
+                    lotNumber: lot.lotNumber,
+                    maxQuantity: lot.remaining,
+                    isPrepared: true,
+                    discount: 0
+                });
+            }
+
+            displaySelectedItems();
+            updateTotal();
+        }
+
+        function addCoffeeItem(id, name, price, vat) {
+            const existingIndex = selectedItems.findIndex(
+                item => !item.isPrepared && item.itemId === id
+            );
+
+            if (existingIndex >= 0) {
+                selectedItems[existingIndex].quantity++;
+            } else {
+                selectedItems.push({
+                    itemId: id,
+                    name: name,
+                    price: price,
+                    vat: vat,
+                    quantity: 1,
+                    lotNumber: '',
+                    isPrepared: false,
+                    discount: 0
+                });
+            }
+
+            displaySelectedItems();
+            updateTotal();
+        }
+
+        function displaySelectedItems() {
+            const itemList = document.getElementById('itemList');
+            itemList.innerHTML = selectedItems.map((item, index) => {
+                const subtotal = item.price * item.quantity;
+                const itemDiscount = item.discount || 0;
+                const discountAmount = subtotal * (itemDiscount / 100);
+                const total = subtotal - discountAmount;
+
+                const totalDisplay = itemDiscount > 0
+                    ? `<span class="item-original-price">${Math.round(subtotal)} Ft</span><span class="item-discount-applied">${Math.round(total)} Ft</span>`
+                    : `${Math.round(total)} Ft`;
+
+                return `
+                    <tr>
+                        <td>${item.name}</td>
+                        <td>${Math.round(item.price)} Ft</td>
+                        <td>
+                            <input type="number" class="quantity-input" min="1"
+                                   ${item.isPrepared ? 'max="' + item.maxQuantity + '"' : ''}
+                                   value="${item.quantity}"
+                                   onchange="updateQuantity(${index}, this.value)">
+                        </td>
+                        <td>
+                            <select class="discount-select" onchange="updateItemDiscount(${index}, this.value)">
+                                <option value="0" ${itemDiscount === 0 ? 'selected' : ''}>-</option>
+                                <option value="5" ${itemDiscount === 5 ? 'selected' : ''}>5%</option>
+                                <option value="10" ${itemDiscount === 10 ? 'selected' : ''}>10%</option>
+                                <option value="15" ${itemDiscount === 15 ? 'selected' : ''}>15%</option>
+                            </select>
+                        </td>
+                        <td>${totalDisplay}</td>
+                        <td>${item.lotNumber || '-'}</td>
+                        <td><span class="remove-item" onclick="removeItem(${index})">&#128465;</span></td>
+                    </tr>
+                `;
+            }).join('');
+
+            document.getElementById('generateReceiptBtn').disabled = selectedItems.length === 0;
+        }
+
+        function updateItemDiscount(index, value) {
+            selectedItems[index].discount = parseInt(value, 10) || 0;
+            displaySelectedItems();
+            updateTotal();
+        }
+
+        function updateQuantity(index, value) {
+            const newQty = parseInt(value, 10);
+            if (newQty < 1) {
+                removeItem(index);
+                return;
+            }
+
+            if (selectedItems[index].isPrepared && newQty > selectedItems[index].maxQuantity) {
+                alert('Only ' + selectedItems[index].maxQuantity + ' available for this LOT');
+                selectedItems[index].quantity = selectedItems[index].maxQuantity;
+            } else {
+                selectedItems[index].quantity = newQty;
+            }
+
+            displaySelectedItems();
+            updateTotal();
+        }
+
+        function removeItem(index) {
+            selectedItems.splice(index, 1);
+            displaySelectedItems();
+            updateTotal();
+        }
+
+        function updateTotal() {
+            // Calculate subtotal after per-item discounts
+            const subtotalBeforeItemDiscounts = selectedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+            // Apply per-item discounts first
+            const subtotalAfterItemDiscounts = selectedItems.reduce((sum, item) => {
+                const itemSubtotal = item.price * item.quantity;
+                const itemDiscount = item.discount || 0;
+                return sum + (itemSubtotal - (itemSubtotal * itemDiscount / 100));
+            }, 0);
+
+            // Then apply overall discount to the result
+            const overallDiscountAmount = subtotalAfterItemDiscounts * (currentDiscount / 100);
+            const total = subtotalAfterItemDiscounts - overallDiscountAmount;
+
+            // Calculate total item-level discounts for display
+            const itemDiscountTotal = subtotalBeforeItemDiscounts - subtotalAfterItemDiscounts;
+
+            if (currentDiscount > 0 || itemDiscountTotal > 0) {
+                let discountInfo = '';
+                if (itemDiscountTotal > 0) {
+                    discountInfo += `Item discounts: -${Math.round(itemDiscountTotal).toLocaleString()} Ft`;
+                }
+                if (currentDiscount > 0) {
+                    if (itemDiscountTotal > 0) discountInfo += ' | ';
+                    discountInfo += `Overall ${currentDiscount}%: -${Math.round(overallDiscountAmount).toLocaleString()} Ft`;
+                }
+
+                document.getElementById('totalDisplay').innerHTML = `Total: <strong>${Math.round(total).toLocaleString()} Ft</strong>`;
+                document.getElementById('discountDisplay').style.display = 'block';
+                document.getElementById('discountDisplay').innerHTML =
+                    `<s>${Math.round(subtotalBeforeItemDiscounts).toLocaleString()} Ft</s> → ${discountInfo}`;
+            } else {
+                document.getElementById('totalDisplay').innerHTML = `Total: ${Math.round(total).toLocaleString()} Ft`;
+                document.getElementById('discountDisplay').style.display = 'none';
+            }
+        }
+
+        function clearEmail() {
+            document.getElementById('recipientEmail').value = '';
+            document.getElementById('recipientEmail').focus();
+        }
+
+        function filterCoffeeItems() {
+            const category = document.getElementById('coffeeFilter').value;
+            document.querySelectorAll('.coffee-item').forEach(item => {
+                if (category === 'all' || item.dataset.category === category) {
+                    item.style.display = 'block';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        }
+
+        async function generateReceipt() {
+            if (selectedItems.length === 0) {
+                alert('No items selected');
+                return;
+            }
+
+            const email = document.getElementById('recipientEmail').value;
+            if (!email) {
+                alert('Please enter an email address');
+                return;
+            }
+
+            const paymentMethod = document.getElementById('paymentMethod').value;
+
+            // Calculate totals with per-item discounts
+            const subtotalBeforeItemDiscounts = selectedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+            const subtotalAfterItemDiscounts = selectedItems.reduce((sum, item) => {
+                const itemSubtotal = item.price * item.quantity;
+                const itemDiscount = item.discount || 0;
+                return sum + (itemSubtotal - (itemSubtotal * itemDiscount / 100));
+            }, 0);
+            const overallDiscountAmount = subtotalAfterItemDiscounts * (currentDiscount / 100);
+            const total = subtotalAfterItemDiscounts - overallDiscountAmount;
+
+            // Prepare items for receipt API - apply per-item discount to item price
+            const receiptItems = selectedItems.map(item => {
+                const itemDiscount = item.discount || 0;
+                const discountedPrice = item.price * (1 - itemDiscount / 100);
+                return {
+                    name: item.name + (itemDiscount > 0 ? ` (-${itemDiscount}%)` : ''),
+                    price: discountedPrice,
+                    vat: item.vat,
+                    quantity: item.quantity,
+                    lotNumber: item.lotNumber || ''
+                };
+            });
+
+            // Prepare market item sales for stock update
+            const marketItemSales = selectedItems
+                .filter(item => item.isPrepared)
+                .map(item => ({
+                    market_session_item_id: item.marketSessionItemId,
+                    quantity: item.quantity
+                }));
+
+            const payload = {
+                items: receiptItems,
+                discount: currentDiscount,
+                payment_method: paymentMethod,
+                electronic: true,
+                emails: [email]
+            };
+
+            // Show loading state
+            const btn = document.getElementById('generateReceiptBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Processing...';
+
+            try {
+                // Create receipt
+                const receiptResponse = await fetch('/create_receipt', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const receiptData = await receiptResponse.json();
+
+                if (!receiptResponse.ok) {
+                    alert('Error creating receipt: ' + (receiptData.message || 'Unknown error'));
+                    btn.disabled = false;
+                    btn.textContent = 'Generate Receipt';
+                    return;
+                }
+
+                // Record the sale for tracking
+                await fetch('/record_market_sale', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        total_amount: total,
+                        payment_method: paymentMethod,
+                        items_json: JSON.stringify(receiptItems),
+                        receipt_id: receiptData.data?.id || ''
+                    })
+                });
+
+                // Update market item stock
+                if (marketItemSales.length > 0) {
+                    await fetch('/market_sale', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ market_item_sales: marketItemSales })
+                    });
+                }
+
+                showToast('Receipt created successfully!', 'success');
+
+                // Reset for next sale
+                selectedItems = [];
+                currentDiscount = 0;
+                document.getElementById('discountSelect').value = '0';
+                displaySelectedItems();
+                updateTotal();
+                document.getElementById('recipientEmail').value = 'valaki@valaki.com';
+                btn.disabled = false;
+                btn.textContent = 'Generate Receipt';
+
+                // Reload to update stock counts
+                setTimeout(() => location.reload(), 1000);
+
+            } catch (error) {
+                console.error('Error:', error);
+                showToast('An error occurred', 'error');
+                btn.disabled = false;
+                btn.textContent = 'Generate Receipt';
+            }
+        }
+
+        function showToast(message, type) {
+            const toast = document.createElement('div');
+            toast.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                padding: 16px 24px;
+                background: ${type === 'success' ? 'var(--success)' : 'var(--danger)'};
+                color: white;
+                border-radius: var(--radius);
+                box-shadow: var(--shadow-lg);
+                z-index: 1000;
+                animation: slideIn 0.3s ease;
+            `;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+    </script>
+
+    <style>
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    </style>
+</body>
+</html>

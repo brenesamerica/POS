@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prepare Market - Café Tiko POS</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        .container {
+            width: 100%;
+            max-width: 1400px;
+            margin: auto;
+            padding: 20px;
+        }
+        .session-header {
+            background: linear-gradient(135deg, var(--gray-50) 0%, var(--gray-100) 100%);
+            padding: 20px;
+            border-radius: var(--radius);
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: var(--shadow);
+        }
+        .session-active {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.1) 100%);
+            border: 2px solid var(--success);
+        }
+        .session-inactive {
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(217, 119, 6, 0.1) 100%);
+            border: 2px solid var(--warning);
+        }
+        .columns {
+            display: flex;
+            gap: 20px;
+        }
+        .left-column {
+            width: 50%;
+        }
+        .right-column {
+            width: 50%;
+        }
+        .add-item-form {
+            background: var(--gray-50);
+            padding: 24px;
+            border-radius: var(--radius);
+            margin-bottom: 20px;
+            border: 1px solid var(--gray-200);
+        }
+        .add-item-form h3 {
+            margin-top: 0;
+            color: var(--gray-800);
+        }
+        .add-item-form label {
+            display: block;
+            margin-top: 16px;
+            font-weight: 500;
+            color: var(--gray-700);
+            font-size: 0.875rem;
+        }
+        .add-item-form input, .add-item-form select {
+            width: 100%;
+            padding: 12px;
+            margin-top: 6px;
+            border: 2px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-size: 1rem;
+            transition: all 0.2s;
+        }
+        .add-item-form input:focus, .add-item-form select:focus {
+            border-color: var(--primary);
+            outline: none;
+        }
+        .add-item-form button {
+            margin-top: 20px;
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, var(--success) 0%, var(--success-dark) 100%);
+            color: white;
+            border: none;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .add-item-form button:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+        }
+        .add-item-form button:disabled {
+            background: var(--gray-300);
+            cursor: not-allowed;
+            transform: none;
+        }
+        .session-items-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .session-items-table th, .session-items-table td {
+            padding: 10px;
+            text-align: left;
+            border: 1px solid #ddd;
+        }
+        .session-items-table th {
+            background-color: #f2f2f2;
+        }
+        .remove-btn {
+            color: var(--danger);
+            cursor: pointer;
+            font-size: 20px;
+            transition: transform 0.2s;
+        }
+        .remove-btn:hover {
+            transform: scale(1.2);
+        }
+        .quantity-input {
+            width: 70px;
+            text-align: center;
+            padding: 8px !important;
+            border-radius: var(--radius-sm) !important;
+        }
+        .btn-danger {
+            background: linear-gradient(135deg, var(--danger) 0%, #dc2626 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .btn-danger:hover {
+            transform: translateY(-1px);
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .btn-success {
+            background: linear-gradient(135deg, var(--success) 0%, var(--success-dark) 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .filter-section {
+            margin-bottom: 15px;
+        }
+        #itemSelect {
+            max-height: 350px;
+            overflow-y: auto;
+            border: 2px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            background: white;
+        }
+        .item-option {
+            padding: 12px 16px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--gray-100);
+            transition: all 0.15s;
+            font-size: 0.95rem;
+        }
+        .item-option:hover {
+            background: var(--gray-50);
+        }
+        .item-option.selected {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+        }
+        .item-option:last-child {
+            border-bottom: none;
+        }
+        .page-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .page-title h1 {
+            margin: 0;
+        }
+        .back-link {
+            color: var(--gray-500);
+            text-decoration: none;
+            font-size: 1.5rem;
+        }
+        .back-link:hover {
+            color: var(--gray-700);
+        }
+
+        /* Summary Modal Styles */
+        .summary-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .summary-modal-content {
+            background: white;
+            border-radius: var(--radius-lg);
+            padding: 32px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: var(--shadow-lg);
+            animation: modalSlide 0.3s ease;
+        }
+        @keyframes modalSlide {
+            from { opacity: 0; transform: translateY(-30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .summary-modal-content h2 {
+            margin: 0 0 8px 0;
+            color: var(--gray-900);
+        }
+        .summary-modal-content h3 {
+            margin: 0 0 4px 0;
+            color: var(--primary);
+        }
+        .summary-date {
+            color: var(--gray-500);
+            font-size: 0.875rem;
+            margin-bottom: 24px;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        .summary-card {
+            padding: 16px;
+            border-radius: var(--radius);
+            text-align: center;
+        }
+        .summary-card.cash {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.15) 100%);
+            border: 1px solid var(--success);
+        }
+        .summary-card.card {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(79, 70, 229, 0.15) 100%);
+            border: 1px solid var(--primary);
+        }
+        .summary-card.total {
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(217, 119, 6, 0.15) 100%);
+            border: 1px solid var(--warning);
+        }
+        .summary-card.transactions {
+            background: var(--gray-50);
+            border: 1px solid var(--gray-200);
+        }
+        .summary-label {
+            font-size: 0.875rem;
+            color: var(--gray-600);
+            margin-bottom: 4px;
+        }
+        .summary-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--gray-900);
+        }
+        .cash-reconciliation {
+            background: var(--gray-50);
+            border-radius: var(--radius);
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+        .cash-reconciliation h4 {
+            margin: 0 0 12px 0;
+            color: var(--gray-700);
+        }
+        .cash-reconciliation table {
+            width: 100%;
+            border: none;
+            box-shadow: none;
+        }
+        .cash-reconciliation td {
+            padding: 8px 0;
+            border: none;
+        }
+        .cash-reconciliation .total-row td {
+            border-top: 2px solid var(--gray-300);
+            padding-top: 12px;
+        }
+        .items-sold {
+            margin-bottom: 24px;
+        }
+        .items-sold h4 {
+            margin: 0 0 12px 0;
+            color: var(--gray-700);
+        }
+        .items-sold table {
+            width: 100%;
+            font-size: 0.875rem;
+        }
+        .items-sold th {
+            text-align: left;
+            padding: 8px;
+            background: var(--gray-100);
+        }
+        .items-sold td {
+            padding: 8px;
+        }
+        .summary-modal-content .btn-primary {
+            width: 100%;
+            padding: 14px;
+            font-size: 1rem;
+            margin-top: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="page-title">
+            <a href="/" class="back-link">←</a>
+            <h1>📦 Prepare Market</h1>
+        </div>
+
+        <!-- Session Header -->
+        <div class="session-header {{ 'session-active' if active_session else 'session-inactive' }}">
+            {% if active_session %}
+                <div>
+                    <strong>Active Session:</strong> {{ active_session[1] }}<br>
+                    <small>Created: {{ active_session[2] }}</small>
+                </div>
+                <div>
+                    <button class="btn-success" onclick="location.href='/market_mode'">Go to Market Mode</button>
+                    <button class="btn-danger" onclick="closeSession()">Close Session</button>
+                </div>
+            {% else %}
+                <div>
+                    <strong>No active session</strong><br>
+                    <small>Create a new session to start preparing for the market</small>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <input type="text" id="sessionName" placeholder="Session name (e.g., Saturday Market)" style="padding: 10px; width: 250px;">
+                    <input type="number" id="initialCash" placeholder="Initial cash (HUF)" style="padding: 10px; width: 150px;" min="0" step="100">
+                    <button class="btn-success" onclick="createSession()">Create Session</button>
+                </div>
+            {% endif %}
+        </div>
+
+        {% if active_session %}
+        <div class="columns">
+            <!-- Left Column: Add Items -->
+            <div class="left-column">
+                <div class="add-item-form">
+                    <h3>Add Product to Market</h3>
+
+                    <div class="filter-section">
+                        <label for="categoryFilter">Filter by Category:</label>
+                        <select id="categoryFilter" onchange="filterItems()">
+                            <option value="all">All Categories</option>
+                            {% for category in categories %}
+                                {% if not category[2] %}
+                                <option value="{{ category[0] }}">{{ category[1] }}</option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <label for="itemSelect">Select Product:</label>
+                    <div id="itemSelect">
+                        {% for item in items %}
+                        <div class="item-option" data-id="{{ item[0] }}" data-name="{{ item[1] }}" data-price="{{ item[2] }}" data-category="{{ item[4] }}" onclick="selectItem(this)">
+                            {{ item[1] }} - {{ "%.0f"|format(item[2]) }} HUF
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <label for="lotNumber">LOT Number:</label>
+                    <input type="text" id="lotNumber" placeholder="e.g., 2025-11-27" required>
+
+                    <label for="quantity">Quantity:</label>
+                    <input type="number" id="quantity" value="1" min="1" required>
+
+                    <button onclick="addItem()" id="addItemBtn" disabled>Add to Market List</button>
+                </div>
+            </div>
+
+            <!-- Right Column: Session Items -->
+            <div class="right-column">
+                <h3>Products for Market ({{ session_items|length }} entries)</h3>
+                <table class="session-items-table">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th>LOT Number</th>
+                            <th>Qty Prepared</th>
+                            <th>Qty Remaining</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sessionItemsBody">
+                        {% for item in session_items %}
+                        <tr data-id="{{ item[0] }}">
+                            <td>{{ item[5] }}</td>
+                            <td>{{ item[2] }}</td>
+                            <td>
+                                <input type="number" class="quantity-input" value="{{ item[3] }}" min="0"
+                                       onchange="updateQuantity({{ item[0] }}, this.value)">
+                            </td>
+                            <td>{{ item[4] }}</td>
+                            <td>
+                                <span class="remove-btn" onclick="removeItem({{ item[0] }})">&#128465;</span>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5" style="text-align: center;">No items added yet</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        <div style="margin-top: 20px;">
+            <button onclick="location.href='{{ url_for('main_menu') }}'">Back to Main Menu</button>
+        </div>
+    </div>
+
+    <script>
+        let selectedItemId = null;
+        let selectedItemName = null;
+
+        function selectItem(element) {
+            // Remove selection from others
+            document.querySelectorAll('.item-option').forEach(el => el.classList.remove('selected'));
+            // Select this one
+            element.classList.add('selected');
+            selectedItemId = element.dataset.id;
+            selectedItemName = element.dataset.name;
+            document.getElementById('addItemBtn').disabled = false;
+        }
+
+        function filterItems() {
+            const categoryId = document.getElementById('categoryFilter').value;
+            const items = document.querySelectorAll('.item-option');
+
+            items.forEach(item => {
+                if (categoryId === 'all' || item.dataset.category === categoryId) {
+                    item.style.display = 'block';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        }
+
+        function createSession() {
+            const name = document.getElementById('sessionName').value || 'Market Session';
+            const initialCash = parseFloat(document.getElementById('initialCash').value) || 0;
+            fetch('/create_market_session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name, initial_cash: initialCash })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            });
+        }
+
+        function closeSession() {
+            if (confirm('Are you sure you want to close this market session? You will see a summary of the day.')) {
+                fetch('/close_market_session', {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        showSummaryModal(data.summary);
+                    } else {
+                        alert('Error: ' + data.message);
+                    }
+                });
+            }
+        }
+
+        function showSummaryModal(summary) {
+            const modal = document.createElement('div');
+            modal.className = 'summary-modal';
+            modal.innerHTML = `
+                <div class="summary-modal-content">
+                    <h2>📊 Market Day Summary</h2>
+                    <h3>${summary.session_name}</h3>
+                    <p class="summary-date">Started: ${new Date(summary.created_at).toLocaleString()}</p>
+
+                    <div class="summary-grid">
+                        <div class="summary-card cash">
+                            <div class="summary-label">💵 Cash Sales</div>
+                            <div class="summary-value">${Math.round(summary.cash_sales).toLocaleString()} Ft</div>
+                        </div>
+                        <div class="summary-card card">
+                            <div class="summary-label">💳 Card Sales</div>
+                            <div class="summary-value">${Math.round(summary.card_sales).toLocaleString()} Ft</div>
+                        </div>
+                        <div class="summary-card total">
+                            <div class="summary-label">📈 Total Sales</div>
+                            <div class="summary-value">${Math.round(summary.total_sales).toLocaleString()} Ft</div>
+                        </div>
+                        <div class="summary-card transactions">
+                            <div class="summary-label">🧾 Transactions</div>
+                            <div class="summary-value">${summary.transaction_count}</div>
+                        </div>
+                    </div>
+
+                    <div class="cash-reconciliation">
+                        <h4>💰 Cash Reconciliation</h4>
+                        <table>
+                            <tr><td>Initial Cash:</td><td>${Math.round(summary.initial_cash).toLocaleString()} Ft</td></tr>
+                            <tr><td>Cash Sales:</td><td>+ ${Math.round(summary.cash_sales).toLocaleString()} Ft</td></tr>
+                            <tr class="total-row"><td><strong>Expected Cash:</strong></td><td><strong>${Math.round(summary.expected_cash).toLocaleString()} Ft</strong></td></tr>
+                        </table>
+                    </div>
+
+                    ${summary.items_sold.length > 0 ? `
+                    <div class="items-sold">
+                        <h4>📦 Items Sold</h4>
+                        <table>
+                            <thead><tr><th>Product</th><th>LOT</th><th>Sold</th></tr></thead>
+                            <tbody>
+                                ${summary.items_sold.map(item => `
+                                    <tr>
+                                        <td>${item.name}</td>
+                                        <td>${item.lot_number}</td>
+                                        <td>${item.sold} / ${item.prepared}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    ` : ''}
+
+                    <button class="btn-primary" onclick="this.closest('.summary-modal').remove(); location.reload();">
+                        Close Summary
+                    </button>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        function addItem() {
+            if (!selectedItemId) {
+                alert('Please select a product');
+                return;
+            }
+
+            const lotNumber = document.getElementById('lotNumber').value;
+            if (!lotNumber) {
+                alert('Please enter a LOT number');
+                return;
+            }
+
+            const quantity = document.getElementById('quantity').value;
+
+            fetch('/add_market_item', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    item_id: selectedItemId,
+                    lot_number: lotNumber,
+                    quantity: quantity
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            });
+        }
+
+        function removeItem(id) {
+            if (confirm('Remove this item from the market list?')) {
+                fetch('/remove_market_item/' + id, {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        location.reload();
+                    } else {
+                        alert('Error: ' + data.message);
+                    }
+                });
+            }
+        }
+
+        function updateQuantity(id, quantity) {
+            fetch('/update_market_item_quantity/' + id, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ quantity: quantity })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            });
+        }
+    </script>
+</body>
+</html>

@@ -11,6 +11,10 @@
     <form action="{{ url_for('add_category') }}" method="post">
         <label for="name">Category Name:</label>
         <input type="text" id="name" name="name" required>
+        <div style="margin: 10px 0;">
+            <input type="checkbox" id="is_coffee_shop" name="is_coffee_shop" value="1">
+            <label for="is_coffee_shop">Coffee Shop Category (no LOT number required)</label>
+        </div>
         <button type="submit">Add Category</button>
     </form>
     <div class="menu-buttons">

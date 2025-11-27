@@ -2,52 +2,264 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Manage Items</title>
+    <title>Manage Products</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        .top-nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: var(--shadow-md);
+            z-index: 100;
+        }
+        .top-nav .nav-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: var(--gray-800);
+        }
+        .top-nav .nav-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .top-nav .nav-btn {
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .top-nav .nav-btn.primary {
+            background: linear-gradient(135deg, var(--success) 0%, var(--success-dark) 100%);
+            color: white;
+            border: none;
+        }
+        .top-nav .nav-btn.secondary {
+            background: var(--gray-100);
+            color: var(--gray-700);
+            border: 1px solid var(--gray-200);
+        }
+        .top-nav .nav-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow);
+        }
+        body {
+            padding-top: 70px;
+        }
+        .container {
+            margin-top: 20px;
+        }
+        table button {
+            padding: 6px 12px;
+            font-size: 0.8rem;
+            width: auto;
+            display: inline-block;
+            margin: 2px;
+        }
+        .filters-bar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .filters-bar input[type="text"] {
+            padding: 10px 14px;
+            border: 2px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-size: 0.9rem;
+            width: 250px;
+            transition: border-color 0.2s;
+        }
+        .filters-bar input[type="text"]:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        .filters-bar select {
+            padding: 10px 14px;
+            border: 2px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-size: 0.9rem;
+            background: white;
+            cursor: pointer;
+        }
+        .sort-btn {
+            padding: 10px 14px;
+            border: 2px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-size: 0.9rem;
+            background: white;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+        .sort-btn:hover {
+            border-color: var(--primary);
+            background: var(--gray-50);
+        }
+        .sort-btn.active {
+            border-color: var(--primary);
+            background: var(--primary);
+            color: white;
+        }
+        .results-count {
+            color: var(--gray-500);
+            font-size: 0.85rem;
+            margin-left: auto;
+        }
+    </style>
 </head>
 <body>
+    <nav class="top-nav">
+        <span class="nav-title">☕ Manage Products</span>
+        <div class="nav-actions">
+            <a href="/add_item" class="nav-btn primary">+ Add Product</a>
+            <a href="{{ url_for('main_menu') }}" class="nav-btn secondary">← Back to Menu</a>
+        </div>
+    </nav>
+
     <div class="container">
-        <h1>Manage Items</h1>
+        <div class="filters-bar">
+            <input type="text" id="searchInput" placeholder="🔍 Search products..." oninput="filterAndSort()">
+            <select id="categoryFilter" onchange="filterAndSort()">
+                <option value="">All Categories</option>
+                {% for category in categories %}
+                <option value="{{ category[1]|lower }}">{{ category[1] }}</option>
+                {% endfor %}
+            </select>
+            <button class="sort-btn" id="sortBtn" onclick="toggleSort()">
+                <span id="sortIcon">↑↓</span> Name
+            </button>
+            <span class="results-count" id="resultsCount"></span>
+        </div>
+
         <table>
-            <tr>
-                <th>Item</th>
-                <th>Price</th>
-                <th>Category</th>
-                <th>Actions</th>
-            </tr>
-            {% for item in items %}
-            <tr>
-                <td>{{ item[1] }}</td>
-                <td>{{ item[2] }}</td>
-                <td>{{ item[4] }}</td>
-                <td>
-                    <button onclick="location.href='/edit_item/{{ item[0] }}'">Edit</button>
-                    <button onclick="deleteItem({{ item[0] }})">Delete</button>
-                </td>
-            </tr>
-            {% endfor %}
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Price</th>
+                    <th>Category</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                {% for item in items %}
+                <tr data-name="{{ item[1]|lower }}" data-category="{{ item[4]|lower if item[4] else '' }}">
+                    <td>{{ item[1] }}</td>
+                    <td>{{ item[2] }} Ft</td>
+                    <td>{{ item[4] }}</td>
+                    <td>
+                        <button onclick="location.href='/edit_item/{{ item[0] }}'">Edit</button>
+                        <button onclick="deleteItem({{ item[0] }})" style="background: var(--danger);">Delete</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
         </table>
-        <button onclick="location.href='/add_item'">Add New Item</button>
-        <button onclick="location.href='{{ url_for('main_menu') }}'">Back to Main Menu</button>
     </div>
 
     <script>
-      function deleteItem(id) {
-          if (confirm("Are you sure you want to delete this item?")) {
-              fetch(`/delete_item/${id}`, { method: 'POST' })
-                  .then(res => res.json())
-                  .then(data => {
-                      if (data.status === "success") {
-                          alert(data.message); // Optional: Alert for confirmation
-                          location.reload();
-                      } else {
-                          alert("Failed to delete the item.");
-                      }
-                  })
-                  .catch(error => console.error("Error:", error));
-          }
-      }
-  </script>
+        let sortOrder = 'none'; // 'none', 'asc', 'desc'
+        const totalItems = document.querySelectorAll('#tableBody tr').length;
 
+        // Show initial count
+        document.getElementById('resultsCount').textContent = `${totalItems} products`;
+
+        function toggleSort() {
+            if (sortOrder === 'none' || sortOrder === 'desc') {
+                sortOrder = 'asc';
+            } else {
+                sortOrder = 'desc';
+            }
+            updateSortButton();
+            filterAndSort();
+        }
+
+        function updateSortButton() {
+            const btn = document.getElementById('sortBtn');
+            const icon = document.getElementById('sortIcon');
+            if (sortOrder === 'asc') {
+                icon.textContent = '↑';
+                btn.classList.add('active');
+            } else if (sortOrder === 'desc') {
+                icon.textContent = '↓';
+                btn.classList.add('active');
+            } else {
+                icon.textContent = '↑↓';
+                btn.classList.remove('active');
+            }
+        }
+
+        function filterAndSort() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const categoryFilter = document.getElementById('categoryFilter').value.toLowerCase();
+            const tbody = document.getElementById('tableBody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+
+            let visibleCount = 0;
+
+            // Filter
+            rows.forEach(row => {
+                const name = row.dataset.name;
+                const category = row.dataset.category;
+                const matchesSearch = name.includes(searchTerm);
+                const matchesCategory = !categoryFilter || category === categoryFilter;
+
+                if (matchesSearch && matchesCategory) {
+                    row.style.display = '';
+                    visibleCount++;
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+
+            // Update count
+            document.getElementById('resultsCount').textContent =
+                visibleCount === totalItems ? `${totalItems} products` : `${visibleCount} of ${totalItems} products`;
+
+            // Sort visible rows
+            if (sortOrder !== 'none') {
+                const visibleRows = rows.filter(row => row.style.display !== 'none');
+                visibleRows.sort((a, b) => {
+                    const nameA = a.dataset.name;
+                    const nameB = b.dataset.name;
+                    if (sortOrder === 'asc') {
+                        return nameA.localeCompare(nameB);
+                    } else {
+                        return nameB.localeCompare(nameA);
+                    }
+                });
+                visibleRows.forEach(row => tbody.appendChild(row));
+            }
+        }
+
+        function deleteItem(id) {
+            if (confirm("Are you sure you want to delete this item?")) {
+                fetch(`/delete_item/${id}`, { method: 'POST' })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === "success") {
+                            location.reload();
+                        } else {
+                            alert("Failed to delete the item.");
+                        }
+                    })
+                    .catch(error => console.error("Error:", error));
+            }
+        }
+    </script>
 </body>
 </html>

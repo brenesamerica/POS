@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Market History - Café Tiko POS</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        .top-nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: var(--shadow-md);
+            z-index: 100;
+        }
+        .top-nav .nav-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: var(--gray-800);
+        }
+        .top-nav .nav-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .top-nav .nav-btn {
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .top-nav .nav-btn.secondary {
+            background: var(--gray-100);
+            color: var(--gray-700);
+            border: 1px solid var(--gray-200);
+        }
+        .top-nav .nav-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow);
+        }
+        body {
+            padding-top: 70px;
+        }
+        .container {
+            margin-top: 20px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .stat-card {
+            background: white;
+            border-radius: var(--radius);
+            padding: 20px;
+            box-shadow: var(--shadow);
+        }
+        .stat-card .label {
+            font-size: 0.8rem;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 4px;
+        }
+        .stat-card .value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--gray-800);
+        }
+        .stat-card .value.success {
+            color: var(--success);
+        }
+
+        .session-card {
+            background: white;
+            border-radius: var(--radius);
+            padding: 20px;
+            margin-bottom: 12px;
+            box-shadow: var(--shadow);
+            cursor: pointer;
+            transition: all 0.2s;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 16px;
+            align-items: center;
+        }
+        .session-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+            border-left: 4px solid var(--primary);
+        }
+        .session-info h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--gray-800);
+            margin: 0 0 4px 0;
+        }
+        .session-info .date {
+            font-size: 0.85rem;
+            color: var(--gray-500);
+        }
+        .session-stats {
+            display: flex;
+            gap: 24px;
+            text-align: right;
+        }
+        .session-stat {
+            display: flex;
+            flex-direction: column;
+        }
+        .session-stat .label {
+            font-size: 0.7rem;
+            color: var(--gray-400);
+            text-transform: uppercase;
+        }
+        .session-stat .value {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--gray-700);
+        }
+        .session-stat .value.cash {
+            color: var(--success);
+        }
+        .session-stat .value.card {
+            color: var(--primary);
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        .status-badge.open {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+        .status-badge.closed {
+            background: var(--gray-100);
+            color: var(--gray-500);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--gray-500);
+        }
+        .empty-state h3 {
+            font-size: 1.2rem;
+            margin-bottom: 8px;
+            color: var(--gray-600);
+        }
+
+        .filters-bar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .filters-bar input[type="text"] {
+            padding: 10px 14px;
+            border: 2px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-size: 0.9rem;
+            width: 250px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="top-nav">
+        <span class="nav-title">📊 Market History</span>
+        <div class="nav-actions">
+            <a href="{{ url_for('main_menu') }}" class="nav-btn secondary">← Back to Menu</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        {% if sessions %}
+        <!-- Overall Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="label">Total Sessions</div>
+                <div class="value">{{ sessions|length }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Total Revenue</div>
+                <div class="value success">{{ "{:,.0f}".format(sessions|sum(attribute=7)) }} Ft</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Cash Sales</div>
+                <div class="value">{{ "{:,.0f}".format(sessions|sum(attribute=5)) }} Ft</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Card Sales</div>
+                <div class="value">{{ "{:,.0f}".format(sessions|sum(attribute=6)) }} Ft</div>
+            </div>
+        </div>
+
+        <div class="filters-bar">
+            <input type="text" id="searchInput" placeholder="🔍 Search sessions..." oninput="filterSessions()">
+        </div>
+
+        <!-- Sessions List -->
+        <div id="sessionsList">
+            {% for session in sessions %}
+            <div class="session-card" onclick="location.href='/market_session_detail/{{ session[0] }}'" data-name="{{ session[1]|lower }}">
+                <div class="session-info">
+                    <h3>
+                        {{ session[1] }}
+                        {% if session[3] %}
+                        <span class="status-badge closed">Closed</span>
+                        {% else %}
+                        <span class="status-badge open">Active</span>
+                        {% endif %}
+                    </h3>
+                    <div class="date">
+                        {{ session[2][:16] if session[2] else 'Unknown date' }}
+                        {% if session[3] %} — Closed: {{ session[3][:16] }}{% endif %}
+                    </div>
+                </div>
+                <div class="session-stats">
+                    <div class="session-stat">
+                        <span class="label">Cash</span>
+                        <span class="value cash">{{ "{:,.0f}".format(session[5]) }} Ft</span>
+                    </div>
+                    <div class="session-stat">
+                        <span class="label">Card</span>
+                        <span class="value card">{{ "{:,.0f}".format(session[6]) }} Ft</span>
+                    </div>
+                    <div class="session-stat">
+                        <span class="label">Total</span>
+                        <span class="value">{{ "{:,.0f}".format(session[7]) }} Ft</span>
+                    </div>
+                    <div class="session-stat">
+                        <span class="label">Sales</span>
+                        <span class="value">{{ session[8] }}</span>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <h3>No market sessions yet</h3>
+            <p>Start a market session from the Prepare Market page to begin tracking sales.</p>
+            <a href="/prepare_market" class="nav-btn" style="display: inline-flex; margin-top: 16px; background: var(--primary); color: white; padding: 12px 24px; border-radius: var(--radius-sm); text-decoration: none;">
+                Start Market Session
+            </a>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        function filterSessions() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const cards = document.querySelectorAll('.session-card');
+
+            cards.forEach(card => {
+                const name = card.dataset.name;
+                if (name.includes(searchTerm)) {
+                    card.style.display = 'grid';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        }
+    </script>
+</body>
+</html>
