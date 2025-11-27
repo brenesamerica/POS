@@ -447,9 +447,14 @@ def verify_data():
 # Initialize the database
 init_db()
 
+# Inject billingo_env into all templates automatically
+@app.context_processor
+def inject_billingo_env():
+    return dict(billingo_env=BILLINGO_ENV)
+
 @app.route('/')
 def main_menu():
-    return render_template('main_menu.html', billingo_env=BILLINGO_ENV)
+    return render_template('main_menu.html')
 
 @app.route('/manage_categories')
 def manage_categories():
@@ -927,8 +932,7 @@ def market_mode():
                           market_items=market_items,
                           market_categories=market_categories,
                           coffee_items=coffee_items,
-                          coffee_categories=coffee_categories,
-                          billingo_env=BILLINGO_ENV)
+                          coffee_categories=coffee_categories)
 
 @app.route('/market_sale', methods=['POST'])
 def market_sale():

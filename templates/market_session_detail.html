@@ -6,9 +6,31 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        .top-nav {
+        /* Environment indicator */
+        .env-indicator {
             position: fixed;
             top: 0;
+            left: 0;
+            right: 0;
+            padding: 4px 12px;
+            text-align: center;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            z-index: 1001;
+        }
+        .env-indicator.test {
+            background: var(--warning);
+            color: var(--gray-900);
+        }
+        .env-indicator.prod {
+            background: var(--danger);
+            color: white;
+        }
+        .top-nav {
+            position: fixed;
+            top: 28px;
             left: 0;
             right: 0;
             background: white;
@@ -50,7 +72,7 @@
             box-shadow: var(--shadow);
         }
         body {
-            padding-top: 70px;
+            padding-top: 98px;
         }
         .container {
             margin-top: 20px;
@@ -248,6 +270,15 @@
     </style>
 </head>
 <body>
+    <!-- Environment Indicator -->
+    <div class="env-indicator {{ 'test' if billingo_env == 'test' else 'prod' }}">
+        {% if billingo_env == 'test' %}
+            TESZT környezet
+        {% else %}
+            Élő rendszer
+        {% endif %}
+    </div>
+
     <nav class="top-nav">
         <span class="nav-title">📊 Session Details</span>
         <div class="nav-actions">

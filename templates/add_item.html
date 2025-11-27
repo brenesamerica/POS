@@ -4,8 +4,44 @@
     <meta charset="UTF-8">
     <title>Add Item</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        /* Environment indicator */
+        .env-indicator {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 4px 12px;
+            text-align: center;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            z-index: 1000;
+        }
+        .env-indicator.test {
+            background: var(--warning);
+            color: var(--gray-900);
+        }
+        .env-indicator.prod {
+            background: var(--danger);
+            color: white;
+        }
+        body {
+            padding-top: 28px;
+        }
+    </style>
 </head>
 <body>
+    <!-- Environment Indicator -->
+    <div class="env-indicator {{ 'test' if billingo_env == 'test' else 'prod' }}">
+        {% if billingo_env == 'test' %}
+            TESZT környezet
+        {% else %}
+            Élő rendszer
+        {% endif %}
+    </div>
+
     <div class="container">
         <h1>Add New Item</h1>
         <form action="{{ url_for('add_item') }}" method="post">
