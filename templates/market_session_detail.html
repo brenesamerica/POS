@@ -267,6 +267,73 @@
             border-radius: var(--radius-sm);
             font-size: 0.9rem;
         }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            body {
+                padding-top: 90px;
+            }
+            .top-nav {
+                padding: 10px 16px;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            .nav-actions {
+                width: 100%;
+                justify-content: center;
+            }
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+            }
+            .stat-card {
+                padding: 14px;
+            }
+            .stat-card .value {
+                font-size: 1.1rem;
+            }
+            .stat-card .label {
+                font-size: 0.65rem;
+            }
+            .tabs {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            .tab {
+                padding: 10px 16px;
+                font-size: 0.9rem;
+                white-space: nowrap;
+            }
+            table {
+                display: block;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            table th, table td {
+                padding: 10px 8px;
+                font-size: 0.8rem;
+            }
+            .filters-bar input {
+                width: 100%;
+                font-size: 16px;
+                padding: 12px;
+            }
+            .session-header h1 {
+                font-size: 1.2rem;
+            }
+            .items-list .item-row {
+                font-size: 0.8rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .stat-card .value {
+                font-size: 1rem;
+            }
+        }
     </style>
 </head>
 <body>
