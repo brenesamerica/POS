@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <title>Market History - Café Tiko POS</title>
+    <link rel="icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-32x32.png" sizes="32x32">
+    <link rel="icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-192x192.png" sizes="192x192">
+    <link rel="apple-touch-icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-180x180.png">
+
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -188,6 +192,39 @@
             color: var(--gray-600);
         }
 
+        /* Language toggle styles */
+        .lang-toggle {
+            position: fixed;
+            bottom: 20px;
+            right: 12px;
+            z-index: 1001;
+            display: flex;
+            gap: 4px;
+            background: white;
+            padding: 4px;
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+        }
+        .lang-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 16px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: transparent;
+            color: var(--gray-500);
+        }
+        .lang-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+        .lang-btn:hover:not(.active) {
+            background: var(--gray-100);
+            color: var(--gray-700);
+        }
+
         .filters-bar {
             display: flex;
             gap: 12px;
@@ -253,16 +290,22 @@
     <!-- Environment Indicator -->
     <div class="env-indicator {{ 'test' if billingo_env == 'test' else 'prod' }}">
         {% if billingo_env == 'test' %}
-            TESZT környezet
+            <span data-i18n="testEnv">TESZT környezet</span>
         {% else %}
-            Élő rendszer
+            <span data-i18n="prodEnv">Élő rendszer</span>
         {% endif %}
     </div>
 
+    <!-- Language Toggle -->
+    <div class="lang-toggle">
+        <button class="lang-btn" data-lang="en" onclick="setLanguage('en')">EN</button>
+        <button class="lang-btn active" data-lang="hu" onclick="setLanguage('hu')">HU</button>
+    </div>
+
     <nav class="top-nav">
-        <span class="nav-title">📊 Market History</span>
+        <span class="nav-title" data-i18n="marketHistoryTitle">📊 Market History</span>
         <div class="nav-actions">
-            <a href="{{ url_for('main_menu') }}" class="nav-btn secondary">← Back to Menu</a>
+            <a href="{{ url_for('main_menu') }}" class="nav-btn secondary" data-i18n="backToMenu">← Back to Menu</a>
         </div>
     </nav>
 
@@ -271,25 +314,25 @@
         <!-- Overall Stats -->
         <div class="stats-grid">
             <div class="stat-card">
-                <div class="label">Total Sessions</div>
+                <div class="label" data-i18n="totalSessions">Total Sessions</div>
                 <div class="value">{{ sessions|length }}</div>
             </div>
             <div class="stat-card">
-                <div class="label">Total Revenue</div>
+                <div class="label" data-i18n="totalRevenue">Total Revenue</div>
                 <div class="value success">{{ "{:,.0f}".format(sessions|sum(attribute=7)) }} Ft</div>
             </div>
             <div class="stat-card">
-                <div class="label">Cash Sales</div>
+                <div class="label" data-i18n="cashSales">Cash Sales</div>
                 <div class="value">{{ "{:,.0f}".format(sessions|sum(attribute=5)) }} Ft</div>
             </div>
             <div class="stat-card">
-                <div class="label">Card Sales</div>
+                <div class="label" data-i18n="cardSales">Card Sales</div>
                 <div class="value">{{ "{:,.0f}".format(sessions|sum(attribute=6)) }} Ft</div>
             </div>
         </div>
 
         <div class="filters-bar">
-            <input type="text" id="searchInput" placeholder="🔍 Search sessions..." oninput="filterSessions()">
+            <input type="text" id="searchInput" data-i18n-placeholder="searchSessions" placeholder="🔍 Search sessions..." oninput="filterSessions()">
         </div>
 
         <!-- Sessions List -->
@@ -333,9 +376,9 @@
         </div>
         {% else %}
         <div class="empty-state">
-            <h3>No market sessions yet</h3>
-            <p>Start a market session from the Prepare Market page to begin tracking sales.</p>
-            <a href="/prepare_market" class="nav-btn" style="display: inline-flex; margin-top: 16px; background: var(--primary); color: white; padding: 12px 24px; border-radius: var(--radius-sm); text-decoration: none;">
+            <h3 data-i18n="noSessionsYet">No market sessions yet</h3>
+            <p data-i18n="startSessionHint">Start a market session from the Prepare Market page to begin tracking sales.</p>
+            <a href="/prepare_market" class="nav-btn" style="display: inline-flex; margin-top: 16px; background: var(--primary); color: white; padding: 12px 24px; border-radius: var(--radius-sm); text-decoration: none;" data-i18n="startMarketSession">
                 Start Market Session
             </a>
         </div>
@@ -356,6 +399,68 @@
                 }
             });
         }
+
+        // ==================== TRANSLATIONS ====================
+        let currentLang = localStorage.getItem('pos_language') || 'hu';
+
+        const translations = {
+            hu: {
+                testEnv: 'TESZT környezet',
+                prodEnv: 'Élő rendszer',
+                marketHistoryTitle: '📊 Piaci előzmények',
+                backToMenu: '← Vissza a menübe',
+                totalSessions: 'Összes munkamenet',
+                totalRevenue: 'Összes bevétel',
+                cashSales: 'Készpénzes eladások',
+                cardSales: 'Kártyás eladások',
+                searchSessions: '🔍 Munkamenetek keresése...',
+                noSessionsYet: 'Még nincs piaci munkamenet',
+                startSessionHint: 'Indíts egy munkamenetet a Piac előkészítés oldalról az értékesítések követéséhez.',
+                startMarketSession: 'Munkamenet indítása'
+            },
+            en: {
+                testEnv: 'TEST Environment',
+                prodEnv: 'Live System',
+                marketHistoryTitle: '📊 Market History',
+                backToMenu: '← Back to Menu',
+                totalSessions: 'Total Sessions',
+                totalRevenue: 'Total Revenue',
+                cashSales: 'Cash Sales',
+                cardSales: 'Card Sales',
+                searchSessions: '🔍 Search sessions...',
+                noSessionsYet: 'No market sessions yet',
+                startSessionHint: 'Start a market session from the Prepare Market page to begin tracking sales.',
+                startMarketSession: 'Start Market Session'
+            }
+        };
+
+        function setLanguage(lang) {
+            currentLang = lang;
+            localStorage.setItem('pos_language', lang);
+
+            document.querySelectorAll('.lang-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.lang === lang);
+            });
+
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.dataset.i18n;
+                if (translations[lang][key]) {
+                    el.textContent = translations[lang][key];
+                }
+            });
+
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                const key = el.dataset.i18nPlaceholder;
+                if (translations[lang][key]) {
+                    el.placeholder = translations[lang][key];
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedLang = localStorage.getItem('pos_language') || 'hu';
+            setLanguage(savedLang);
+        });
     </script>
 </body>
 </html>

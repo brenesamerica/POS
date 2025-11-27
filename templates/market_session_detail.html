@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <title>{{ session[1] }} - Market Session Detail</title>
+    <link rel="icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-32x32.png" sizes="32x32">
+    <link rel="icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-192x192.png" sizes="192x192">
+    <link rel="apple-touch-icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-180x180.png">
+
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -208,6 +212,15 @@
             background: var(--gray-100);
             color: var(--gray-600);
         }
+        .sold-by-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--primary);
+        }
 
         .stock-bar {
             display: flex;
@@ -266,6 +279,39 @@
             border: 2px solid var(--gray-200);
             border-radius: var(--radius-sm);
             font-size: 0.9rem;
+        }
+
+        /* Language toggle styles */
+        .lang-toggle {
+            position: fixed;
+            bottom: 20px;
+            right: 12px;
+            z-index: 1001;
+            display: flex;
+            gap: 4px;
+            background: white;
+            padding: 4px;
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+        }
+        .lang-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 16px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: transparent;
+            color: var(--gray-500);
+        }
+        .lang-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+        .lang-btn:hover:not(.active) {
+            background: var(--gray-100);
+            color: var(--gray-700);
         }
 
         /* Responsive */
@@ -340,17 +386,28 @@
     <!-- Environment Indicator -->
     <div class="env-indicator {{ 'test' if billingo_env == 'test' else 'prod' }}">
         {% if billingo_env == 'test' %}
-            TESZT környezet
+            <span data-i18n="testEnv">TESZT környezet</span>
         {% else %}
-            Élő rendszer
+            <span data-i18n="prodEnv">Élő rendszer</span>
         {% endif %}
     </div>
 
+    <!-- Language Toggle -->
+    <div class="lang-toggle">
+        <button class="lang-btn" data-lang="en" onclick="setLanguage('en')">EN</button>
+        <button class="lang-btn active" data-lang="hu" onclick="setLanguage('hu')">HU</button>
+    </div>
+
     <nav class="top-nav">
-        <span class="nav-title">📊 Session Details</span>
+        <span class="nav-title" data-i18n="sessionDetailsTitle">📊 Session Details</span>
         <div class="nav-actions">
-            <a href="{{ url_for('market_history') }}" class="nav-btn secondary">← Back to History</a>
-            <a href="{{ url_for('main_menu') }}" class="nav-btn secondary">Home</a>
+            {% if not session[3] %}
+            <button onclick="closeSession()" class="nav-btn" style="background: var(--danger); color: white; border: none;" data-i18n="closeSession">Close Session</button>
+            {% else %}
+            <button onclick="reopenSession({{ session[0] }})" class="nav-btn" style="background: var(--success); color: white; border: none;" data-i18n="reopenSession">Reopen Session</button>
+            {% endif %}
+            <a href="{{ url_for('market_history') }}" class="nav-btn secondary" data-i18n="backToHistory">← Back to History</a>
+            <a href="{{ url_for('main_menu') }}" class="nav-btn secondary" data-i18n="home">Home</a>
         </div>
     </nav>
 
@@ -358,43 +415,48 @@
         <div class="session-header">
             <h1>{{ session[1] }}</h1>
             <div class="meta">
-                Started: {{ session[2][:16] if session[2] else 'Unknown' }}
-                {% if session[3] %} | Closed: {{ session[3][:16] }}{% else %} | <strong style="color: var(--success);">Active Session</strong>{% endif %}
+                <span data-i18n="started">Started:</span> {{ session[2][:16] if session[2] else 'Unknown' }}
+                {% if session[3] %} | <span data-i18n="closed">Closed:</span> {{ session[3][:16] }}{% else %} | <strong style="color: var(--success);" data-i18n="activeSessionLabel">Active Session</strong>{% endif %}
             </div>
         </div>
 
         <!-- Summary Stats -->
         <div class="stats-grid">
             <div class="stat-card">
-                <div class="label">Initial Cash</div>
+                <div class="label" data-i18n="initialCash">Initial Cash</div>
                 <div class="value">{{ "{:,.0f}".format(summary.initial_cash) }} Ft</div>
             </div>
             <div class="stat-card">
-                <div class="label">Cash Sales</div>
+                <div class="label" data-i18n="cashSales">Cash Sales</div>
                 <div class="value success">{{ "{:,.0f}".format(summary.cash_sales) }} Ft</div>
             </div>
             <div class="stat-card">
-                <div class="label">Card Sales</div>
+                <div class="label" data-i18n="cardSales">Card Sales</div>
                 <div class="value primary">{{ "{:,.0f}".format(summary.card_sales) }} Ft</div>
             </div>
             <div class="stat-card">
-                <div class="label">Total Sales</div>
+                <div class="label" data-i18n="totalSales">Total Sales</div>
                 <div class="value">{{ "{:,.0f}".format(summary.total_sales) }} Ft</div>
             </div>
             <div class="stat-card">
-                <div class="label">Expected Cash</div>
+                <div class="label" data-i18n="expectedCash">Expected Cash</div>
                 <div class="value warning">{{ "{:,.0f}".format(summary.expected_cash) }} Ft</div>
             </div>
             <div class="stat-card">
-                <div class="label">Transactions</div>
+                <div class="label" data-i18n="transactions">Transactions</div>
                 <div class="value">{{ summary.transaction_count }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="label" data-i18n="coffeeShopLabel">☕ Coffee Shop</div>
+                <div class="value" style="color: #8b4513;">{{ "{:,.0f}".format(summary.coffee_sales_total) }} Ft</div>
             </div>
         </div>
 
         <!-- Tabs -->
         <div class="tabs">
-            <div class="tab active" onclick="switchTab('stock')">Stock Tracking</div>
-            <div class="tab" onclick="switchTab('sales')">Sales Log</div>
+            <div class="tab active" onclick="switchTab('stock')" data-i18n="stockTracking">Stock Tracking</div>
+            <div class="tab" onclick="switchTab('coffee')" data-i18n="coffeeShopSales">Coffee Shop Sales</div>
+            <div class="tab" onclick="switchTab('sales')" data-i18n="salesLog">Sales Log</div>
         </div>
 
         <!-- Stock Tab -->
@@ -451,22 +513,69 @@
             </table>
         </div>
 
+        <!-- Coffee Shop Tab -->
+        <div id="coffee-tab" class="tab-content">
+            {% if coffee_sales %}
+            <div style="margin-bottom: 16px; padding: 16px; background: linear-gradient(135deg, rgba(139, 69, 19, 0.1) 0%, rgba(160, 82, 45, 0.15) 100%); border-radius: var(--radius); border: 1px solid rgba(139, 69, 19, 0.3);">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 600; color: var(--gray-700);">☕ Total Coffee Shop Revenue</span>
+                    <span style="font-size: 1.5rem; font-weight: 700; color: #8b4513;">{{ "{:,.0f}".format(summary.coffee_sales_total) }} Ft</span>
+                </div>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>Quantity Sold</th>
+                        <th>Revenue</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in coffee_sales %}
+                    <tr>
+                        <td>{{ item.name }}</td>
+                        <td style="font-weight: 600;">{{ item.quantity }}</td>
+                        <td style="color: var(--success); font-weight: 600;">{{ "{:,.0f}".format(item.revenue) }} Ft</td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="totals-row">
+                        <td><strong>TOTAL</strong></td>
+                        <td>{{ coffee_sales|sum(attribute='quantity') }}</td>
+                        <td style="color: var(--success);">{{ "{:,.0f}".format(summary.coffee_sales_total) }} Ft</td>
+                    </tr>
+                </tbody>
+            </table>
+            {% else %}
+            <div style="text-align: center; padding: 60px 20px; color: var(--gray-500);">
+                <div style="font-size: 3rem; margin-bottom: 12px;">☕</div>
+                <h3 style="font-size: 1.2rem; margin-bottom: 8px; color: var(--gray-600);">No coffee shop sales</h3>
+                <p>Coffee shop products sold during this session will appear here.</p>
+            </div>
+            {% endif %}
+        </div>
+
         <!-- Sales Tab -->
         <div id="sales-tab" class="tab-content">
             <table>
                 <thead>
                     <tr>
-                        <th>Time</th>
-                        <th>Amount</th>
-                        <th>Payment</th>
-                        <th>Items</th>
-                        <th>Receipt ID</th>
+                        <th data-i18n="time">Time</th>
+                        <th data-i18n="soldBy">Sold By</th>
+                        <th data-i18n="amount">Amount</th>
+                        <th data-i18n="payment">Payment</th>
+                        <th data-i18n="items">Items</th>
+                        <th data-i18n="receiptId">Receipt ID</th>
+                        <th data-i18n="actions">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for sale in sales %}
-                    <tr>
+                    <tr id="sale-row-{{ sale[0] }}" {% if sale[7] %}style="opacity: 0.5; text-decoration: line-through;"{% endif %}>
                         <td>{{ sale[1][11:16] if sale[1] else '-' }}</td>
+                        <td>
+                            <span class="sold-by-badge">{{ sale[6] if sale[6] else '-' }}</span>
+                        </td>
                         <td style="font-weight: 600;">{{ "{:,.0f}".format(sale[2]) }} Ft</td>
                         <td>
                             {% if sale[3] == 'cash' %}
@@ -483,10 +592,22 @@
                             </div>
                         </td>
                         <td><code>{{ sale[5] if sale[5] else '-' }}</code></td>
+                        <td>
+                            {% if sale[7] %}
+                            <span style="color: var(--gray-400); font-size: 0.75rem;" data-i18n="cancelled">Sztornózva</span>
+                            {% elif sale[5] %}
+                            <button onclick="cancelDocument('{{ sale[5] }}', {{ sale[0] }})"
+                                    class="cancel-btn"
+                                    style="background: var(--danger); color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.75rem;"
+                                    data-i18n="sztorno">Sztornó</button>
+                            {% else %}
+                            <span style="color: var(--gray-400);">-</span>
+                            {% endif %}
+                        </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="5" style="text-align: center; color: var(--gray-500); padding: 40px;">
+                        <td colspan="7" style="text-align: center; color: var(--gray-500); padding: 40px;">
                             No sales recorded in this session
                         </td>
                     </tr>
@@ -563,6 +684,205 @@
 
         // Run on page load
         document.addEventListener('DOMContentLoaded', renderSaleItems);
+
+        // Close session function
+        function closeSession() {
+            const confirmMsg = currentLang === 'hu'
+                ? 'Biztosan le szeretnéd zárni ezt a munkamenetet?'
+                : 'Are you sure you want to close this session?';
+
+            if (confirm(confirmMsg)) {
+                fetch('/close_market_session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        location.reload();
+                    } else {
+                        alert(data.message || 'Error closing session');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error closing session');
+                });
+            }
+        }
+
+        // Reopen session function
+        function reopenSession(sessionId) {
+            const confirmMsg = currentLang === 'hu'
+                ? 'Biztosan újra szeretnéd nyitni ezt a munkamenetet?'
+                : 'Are you sure you want to reopen this session?';
+
+            if (confirm(confirmMsg)) {
+                fetch('/reopen_market_session/' + sessionId, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        location.reload();
+                    } else {
+                        const errorMsg = currentLang === 'hu' && data.message.includes('another session')
+                            ? 'Nem lehet újranyitni: egy másik munkamenet már aktív. Először zárd le azt.'
+                            : data.message;
+                        alert(errorMsg || 'Error reopening session');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error reopening session');
+                });
+            }
+        }
+
+        // Cancel document function (Sztornó)
+        function cancelDocument(receiptId, saleId) {
+            const confirmMsg = currentLang === 'hu'
+                ? 'Biztosan sztornózni szeretnéd ezt a bizonylatot?\n\nBizonylat: ' + receiptId
+                : 'Are you sure you want to cancel this document?\n\nReceipt: ' + receiptId;
+
+            const reasonPrompt = currentLang === 'hu'
+                ? 'Kérlek add meg a sztornó okát:'
+                : 'Please enter the cancellation reason:';
+
+            if (confirm(confirmMsg)) {
+                const reason = prompt(reasonPrompt, 'Sztornó');
+                if (reason === null) return; // User cancelled
+
+                fetch('/cancel_document/' + receiptId, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cancellation_reason: reason || 'Sztornó', sale_id: saleId })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        const successMsg = currentLang === 'hu'
+                            ? 'Bizonylat sikeresen sztornózva!'
+                            : 'Document cancelled successfully!';
+                        alert(successMsg);
+
+                        // Reload the page to update summary totals
+                        location.reload();
+                    } else {
+                        const errorMsg = currentLang === 'hu'
+                            ? 'Hiba a sztornózás során: '
+                            : 'Error cancelling document: ';
+                        alert(errorMsg + (data.message?.error?.message || data.message?.message || JSON.stringify(data.message)));
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    const errorMsg = currentLang === 'hu'
+                        ? 'Hiba a sztornózás során'
+                        : 'Error cancelling document';
+                    alert(errorMsg);
+                });
+            }
+        }
+
+        // ==================== TRANSLATIONS ====================
+        let currentLang = localStorage.getItem('pos_language') || 'hu';
+
+        const translations = {
+            hu: {
+                testEnv: 'TESZT környezet',
+                prodEnv: 'Élő rendszer',
+                sessionDetailsTitle: '📊 Munkamenet részletei',
+                backToHistory: '← Vissza az előzményekhez',
+                home: 'Főoldal',
+                closeSession: 'Munkamenet lezárása',
+                reopenSession: 'Munkamenet újranyitása',
+                started: 'Kezdés:',
+                closed: 'Lezárva:',
+                activeSessionLabel: 'Aktív munkamenet',
+                initialCash: 'Kezdő készpénz',
+                cashSales: 'Készpénzes eladások',
+                cardSales: 'Kártyás eladások',
+                totalSales: 'Összes eladás',
+                expectedCash: 'Várható készpénz',
+                transactions: 'Tranzakciók',
+                coffeeShopLabel: '☕ Kávézó',
+                stockTracking: 'Készlet követés',
+                coffeeShopSales: 'Kávézó eladások',
+                salesLog: 'Eladások napló',
+                searchProducts: '🔍 Termékek keresése...',
+                time: 'Idő',
+                soldBy: 'Eladó',
+                amount: 'Összeg',
+                payment: 'Fizetés',
+                items: 'Tételek',
+                receiptId: 'Bizonylat',
+                actions: 'Műveletek',
+                sztorno: 'Sztornó',
+                cancelled: 'Sztornózva'
+            },
+            en: {
+                testEnv: 'TEST Environment',
+                prodEnv: 'Live System',
+                sessionDetailsTitle: '📊 Session Details',
+                backToHistory: '← Back to History',
+                home: 'Home',
+                closeSession: 'Close Session',
+                reopenSession: 'Reopen Session',
+                started: 'Started:',
+                closed: 'Closed:',
+                activeSessionLabel: 'Active Session',
+                initialCash: 'Initial Cash',
+                cashSales: 'Cash Sales',
+                cardSales: 'Card Sales',
+                totalSales: 'Total Sales',
+                expectedCash: 'Expected Cash',
+                transactions: 'Transactions',
+                coffeeShopLabel: '☕ Coffee Shop',
+                stockTracking: 'Stock Tracking',
+                coffeeShopSales: 'Coffee Shop Sales',
+                salesLog: 'Sales Log',
+                searchProducts: '🔍 Search products...',
+                time: 'Time',
+                soldBy: 'Sold By',
+                amount: 'Amount',
+                payment: 'Payment',
+                items: 'Items',
+                receiptId: 'Receipt ID',
+                actions: 'Actions',
+                sztorno: 'Cancel',
+                cancelled: 'Cancelled'
+            }
+        };
+
+        function setLanguage(lang) {
+            currentLang = lang;
+            localStorage.setItem('pos_language', lang);
+
+            document.querySelectorAll('.lang-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.lang === lang);
+            });
+
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.dataset.i18n;
+                if (translations[lang][key]) {
+                    el.textContent = translations[lang][key];
+                }
+            });
+
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                const key = el.dataset.i18nPlaceholder;
+                if (translations[lang][key]) {
+                    el.placeholder = translations[lang][key];
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedLang = localStorage.getItem('pos_language') || 'hu';
+            setLanguage(savedLang);
+        });
     </script>
 </body>
 </html>

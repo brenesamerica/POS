@@ -1,9 +1,13 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="hu">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Market Mode - Café Tiko POS</title>
+    <title>Piac Mód - Café Tiko POS</title>
+    <link rel="icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-32x32.png" sizes="32x32">
+    <link rel="icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-192x192.png" sizes="192x192">
+    <link rel="apple-touch-icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-180x180.png">
+
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -232,6 +236,14 @@
             color: var(--gray-500);
             margin-top: 2px;
         }
+        .item-tile .product-attrs {
+            font-size: 0.65rem;
+            color: var(--gray-500);
+            margin-top: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
 
         /* LOT Selection Modal */
         .modal {
@@ -285,6 +297,152 @@
             color: var(--gray-500);
             font-size: 0.875rem;
             margin-top: 4px;
+        }
+
+        /* 500g LOT selection styles */
+        .lot-500g-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .lot-500g-row label {
+            font-weight: 600;
+            color: var(--gray-700);
+            min-width: 60px;
+        }
+        .lot-500g-select {
+            flex: 1;
+            padding: 12px 14px;
+            border: 2px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-size: 1rem;
+            background: white;
+            cursor: pointer;
+        }
+        .lot-500g-select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        /* Milk selection modal styles */
+        .milk-options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .milk-option {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px 20px;
+            border: 2px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.2s;
+            background: white;
+        }
+        .milk-option:hover {
+            border-color: var(--primary);
+            background: var(--gray-50);
+            transform: translateX(4px);
+        }
+        .milk-option:active {
+            transform: scale(0.98);
+        }
+        .milk-icon {
+            font-size: 1.5rem;
+        }
+        .milk-label {
+            font-weight: 600;
+            color: var(--gray-700);
+            font-size: 1rem;
+        }
+
+        /* Piacos toggle styles */
+        .piacos-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            background: rgba(255,255,255,0.2);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+        }
+        .piacos-toggle input {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: var(--warning);
+        }
+        .piacos-label {
+            font-weight: 600;
+            color: white;
+        }
+        .piacos-toggle:has(input:checked) {
+            background: var(--warning);
+        }
+        .piacos-toggle:has(input:checked) .piacos-label {
+            color: var(--gray-900);
+        }
+
+        /* Piacos price indicator on tiles */
+        .piacos-price {
+            color: var(--warning) !important;
+            font-weight: 700;
+        }
+        .original-price {
+            text-decoration: line-through;
+            color: rgba(255,255,255,0.5);
+            font-size: 0.75rem;
+            margin-right: 4px;
+        }
+
+        /* Language toggle styles */
+        .lang-toggle {
+            position: fixed;
+            bottom: 20px;
+            right: 12px;
+            z-index: 101;
+            display: flex;
+            gap: 4px;
+            background: white;
+            padding: 4px;
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+        }
+        .lang-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 16px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: transparent;
+            color: var(--gray-500);
+        }
+        .lang-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+        .lang-btn:hover:not(.active) {
+            background: var(--gray-100);
+            color: var(--gray-700);
+        }
+
+        /* 500g virtual product badge */
+        .virtual-500g-badge {
+            position: absolute;
+            bottom: 6px;
+            left: 6px;
+            background: var(--warning);
+            color: var(--gray-900);
+            padding: 2px 6px;
+            border-radius: 8px;
+            font-size: 0.6rem;
+            font-weight: 700;
         }
 
         /* Selected Items Table */
@@ -476,6 +634,48 @@
             color: var(--gray-900);
         }
 
+        /* Payment Method Badges */
+        .payment-badges {
+            display: flex;
+            gap: 12px;
+            margin-top: 8px;
+        }
+        .payment-badge {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 16px 12px;
+            border: 3px solid var(--gray-200);
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: white;
+        }
+        .payment-badge:hover {
+            border-color: var(--gray-400);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow);
+        }
+        .payment-badge.selected {
+            border-color: var(--success);
+            background: rgba(16, 185, 129, 0.1);
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+        }
+        .payment-badge .payment-icon {
+            font-size: 2rem;
+            margin-bottom: 6px;
+        }
+        .payment-badge .payment-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--gray-600);
+        }
+        .payment-badge.selected .payment-label {
+            color: var(--success);
+        }
+
         .filter-section {
             margin-bottom: 12px;
         }
@@ -493,7 +693,7 @@
 
         /* Search box */
         .search-box {
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
         .search-box input {
             width: 100%;
@@ -509,6 +709,26 @@
         }
         .search-box input::placeholder {
             color: var(--gray-400);
+        }
+
+        /* Attribute Filters */
+        .attribute-filters {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .attribute-filters select {
+            flex: 1;
+            padding: 10px 14px;
+            border: 2px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-size: 0.9rem;
+            background: white;
+            cursor: pointer;
+        }
+        .attribute-filters select:focus {
+            outline: none;
+            border-color: var(--primary);
         }
 
         /* Multiple LOT indicator */
@@ -606,28 +826,132 @@
                 gap: 8px;
             }
 
-            /* Table adjustments */
+            /* Table adjustments - card layout for mobile */
             #itemTable {
-                font-size: 0.8rem;
+                display: block;
             }
-            #itemTable th, #itemTable td {
-                padding: 8px 6px;
+            #itemTable thead {
+                display: none;
+            }
+            #itemTable tbody {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+            #itemTable tr {
+                display: grid;
+                grid-template-columns: 1fr auto;
+                grid-template-rows: auto auto auto auto;
+                background: var(--gray-50);
+                padding: 14px;
+                border-radius: var(--radius-sm);
+                border: 1px solid var(--gray-200);
+                gap: 8px 12px;
+            }
+            #itemTable td {
+                border: none;
+                padding: 0;
+            }
+            #itemTable td:nth-child(1) {
+                /* Item name - spans full width */
+                grid-column: 1 / -1;
+                font-weight: 600;
+                font-size: 1rem;
+                color: var(--gray-800);
+                padding-bottom: 6px;
+                border-bottom: 1px dashed var(--gray-200);
+            }
+            #itemTable td:nth-child(2) {
+                /* Price */
+                grid-column: 1;
+                grid-row: 2;
+                font-size: 0.9rem;
+                color: var(--gray-600);
+            }
+            #itemTable td:nth-child(2)::before {
+                content: "Price: ";
+                font-size: 0.75rem;
+                color: var(--gray-400);
+            }
+            #itemTable td:nth-child(3) {
+                /* Quantity */
+                grid-column: 2;
+                grid-row: 2;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+            #itemTable td:nth-child(3)::before {
+                content: "Qty:";
+                font-size: 0.75rem;
+                color: var(--gray-400);
+            }
+            #itemTable td:nth-child(4) {
+                /* Discount */
+                grid-column: 1;
+                grid-row: 3;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+            #itemTable td:nth-child(4)::before {
+                content: "Discount:";
+                font-size: 0.75rem;
+                color: var(--gray-400);
+            }
+            #itemTable td:nth-child(5) {
+                /* Total */
+                grid-column: 2;
+                grid-row: 3;
+                font-weight: 700;
+                color: var(--success);
+                font-size: 1.1rem;
+                text-align: right;
+            }
+            #itemTable td:nth-child(6) {
+                /* LOT */
+                grid-column: 1;
+                grid-row: 4;
+                font-size: 0.75rem;
+                color: var(--gray-500);
+            }
+            #itemTable td:nth-child(6)::before {
+                content: "LOT: ";
+            }
+            #itemTable td:nth-child(7) {
+                /* Remove button */
+                grid-column: 2;
+                grid-row: 4;
+                text-align: right;
             }
             .quantity-input {
-                width: 50px;
-                padding: 6px !important;
+                width: 55px;
+                padding: 10px 6px !important;
+                font-size: 16px;
+                min-height: 44px;
             }
             .discount-select {
-                padding: 4px 6px;
-                font-size: 0.75rem;
+                padding: 10px 8px;
+                font-size: 16px;
+                min-height: 44px;
             }
             .remove-item {
-                font-size: 18px;
+                font-size: 28px;
+                padding: 8px;
+                color: var(--danger);
             }
 
             /* Total display */
             #totalDisplay {
                 font-size: 1.5rem;
+                text-align: center;
+                padding: 12px;
+                background: var(--gray-50);
+                border-radius: var(--radius-sm);
+            }
+            #discountDisplay {
+                text-align: center;
+                padding: 8px;
             }
 
             /* Form row stack on mobile */
@@ -658,6 +982,16 @@
                 font-size: 16px;
             }
 
+            /* Attribute filters mobile */
+            .attribute-filters {
+                flex-direction: column;
+            }
+            .attribute-filters select {
+                width: 100%;
+                font-size: 16px;
+                padding: 14px;
+            }
+
             /* Section titles */
             .section-title {
                 padding: 10px 14px;
@@ -676,6 +1010,20 @@
                 font-size: 16px;
                 padding: 14px;
             }
+
+            /* Payment badges mobile */
+            .payment-badges {
+                gap: 8px;
+            }
+            .payment-badge {
+                padding: 14px 8px;
+            }
+            .payment-badge .payment-icon {
+                font-size: 1.75rem;
+            }
+            .payment-badge .payment-label {
+                font-size: 0.8rem;
+            }
         }
 
         /* Small phones */
@@ -688,11 +1036,35 @@
                 height: 55px;
             }
             #totalDisplay {
-                font-size: 1.3rem;
+                font-size: 1.4rem;
             }
             .btn {
-                padding: 14px 16px;
+                padding: 16px;
+                font-size: 1rem;
+                min-height: 52px;
+            }
+
+            /* Card items - compact for small phones */
+            #itemTable tr {
+                padding: 12px;
+                gap: 6px 10px;
+            }
+            #itemTable td:nth-child(1) {
                 font-size: 0.95rem;
+            }
+            .quantity-input {
+                width: 50px;
+                padding: 8px 4px !important;
+            }
+            .discount-select {
+                padding: 8px 6px;
+                font-size: 14px;
+            }
+
+            /* Right column header */
+            .right-column h2 {
+                font-size: 1.2rem;
+                text-align: center;
             }
         }
 
@@ -730,65 +1102,80 @@
         {% endif %}
     </div>
 
+    <!-- Language Toggle -->
+    <div class="lang-toggle">
+        <button class="lang-btn" data-lang="en" onclick="setLanguage('en')">EN</button>
+        <button class="lang-btn active" data-lang="hu" onclick="setLanguage('hu')">HU</button>
+    </div>
+
     <div class="container">
         <!-- Left Column: Product Selection -->
         <div class="left-column">
             <div class="session-banner">
                 <span>{{ active_session[1] }}</span>
-                <a href="/prepare_market" style="color: white;">Edit Session</a>
+                <a href="/prepare_market" style="color: white;" data-i18n="editSession">Munkamenet szerkesztése</a>
             </div>
 
             <!-- Search Box -->
             <div class="search-box">
-                <input type="text" id="productSearch" placeholder="🔍 Search products..." oninput="filterProducts()">
+                <input type="text" id="productSearch" data-i18n-placeholder="searchProducts" placeholder="🔍 Termékek keresése..." oninput="filterProducts()">
             </div>
 
+            <!-- Origin/Roast Filters -->
+            {% if origins or roasts %}
+            <div class="attribute-filters">
+                {% if origins %}
+                <select id="originFilter" onchange="filterProducts()">
+                    <option value="" data-i18n="allOrigins">Összes eredet</option>
+                    {% for origin in origins %}
+                    <option value="{{ origin }}">{{ origin }}</option>
+                    {% endfor %}
+                </select>
+                {% endif %}
+                {% if roasts %}
+                <select id="roastFilter" onchange="filterProducts()">
+                    <option value="" data-i18n="allRoasts">Összes pörkölés</option>
+                    {% for roast in roasts %}
+                    <option value="{{ roast }}">{{ roast }}</option>
+                    {% endfor %}
+                </select>
+                {% endif %}
+            </div>
+            {% endif %}
+
             <!-- Prepared Products Section - Grouped by Category -->
-            <div class="section-title prepared">Prepared Products</div>
+            <div class="section-title prepared" data-i18n="preparedProducts">Előkészített termékek</div>
             <div id="preparedCategories">
                 <!-- Categories rendered via JavaScript -->
             </div>
 
             <!-- Coffee Shop Section -->
             {% if coffee_items %}
-            <div class="section-title coffee">☕ Coffee Shop</div>
-            <div class="filter-section">
-                <select id="coffeeFilter" onchange="filterCoffeeItems()">
-                    <option value="all">All Coffee Items</option>
-                    {% for cat in coffee_categories %}
-                    <option value="{{ cat[0] }}">{{ cat[1] }}</option>
-                    {% endfor %}
-                </select>
+            <div class="section-title coffee" style="display: flex; justify-content: space-between; align-items: center;">
+                <span data-i18n="coffeeShop">☕ Kávézó</span>
+                <label class="piacos-toggle">
+                    <input type="checkbox" id="piacosToggle" onchange="togglePiacosMode()">
+                    <span class="piacos-label">Piacos</span>
+                </label>
             </div>
-            <div class="items-grid" id="coffeeItems">
-                {% for item in coffee_items %}
-                <div class="item-tile coffee-item" data-category="{{ item[5] }}"
-                     onclick="addCoffeeItem({{ item[0] }}, '{{ item[1] }}', {{ item[2] }}, '{{ item[3] }}')">
-                    {% if item[4] %}
-                    <img src="{{ item[4] }}" alt="{{ item[1] }}">
-                    {% else %}
-                    <div class="placeholder-img">☕</div>
-                    {% endif %}
-                    <div class="name">{{ item[1][:25] }}{% if item[1]|length > 25 %}...{% endif %}</div>
-                    <div class="price">{{ "%.0f"|format(item[2]) }} Ft</div>
-                </div>
-                {% endfor %}
+            <div id="coffeeCategories">
+                <!-- Coffee items grouped by category, rendered via JavaScript -->
             </div>
             {% endif %}
         </div>
 
         <!-- Right Column: Selected Items & Checkout -->
         <div class="right-column">
-            <h2>🧾 Current Sale</h2>
+            <h2 data-i18n="currentSale">🧾 Aktuális eladás</h2>
 
             <table id="itemTable">
                 <thead>
                     <tr>
-                        <th>Item</th>
-                        <th>Price</th>
-                        <th>Qty</th>
-                        <th>Discount</th>
-                        <th>Total</th>
+                        <th data-i18n="item">Termék</th>
+                        <th data-i18n="price">Ár</th>
+                        <th data-i18n="qty">Menny.</th>
+                        <th data-i18n="discount">Kedv.</th>
+                        <th data-i18n="total">Összesen</th>
                         <th>LOT</th>
                         <th></th>
                     </tr>
@@ -796,43 +1183,52 @@
                 <tbody id="itemList"></tbody>
             </table>
 
-            <div id="totalDisplay">Total: 0 Ft</div>
+            <div id="totalDisplay" data-i18n-template="totalAmount">Összesen: 0 Ft</div>
             <div id="discountDisplay" style="display: none; color: var(--gray-500); font-size: 0.9rem; margin-top: -10px;"></div>
 
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="paymentMethod">Payment</label>
-                    <select id="paymentMethod">
-                        <option value="cash">💵 Cash</option>
-                        <option value="bankcard">💳 Card</option>
-                        <option value="wire_transfer">🏦 Transfer</option>
-                    </select>
+            <div class="form-group">
+                <label data-i18n="paymentMethod">Fizetési mód</label>
+                <div class="payment-badges">
+                    <div class="payment-badge" data-method="cash" onclick="selectPayment('cash')">
+                        <span class="payment-icon">💵</span>
+                        <span class="payment-label" data-i18n="cash">Készpénz</span>
+                    </div>
+                    <div class="payment-badge" data-method="bankcard" onclick="selectPayment('bankcard')">
+                        <span class="payment-icon">💳</span>
+                        <span class="payment-label" data-i18n="card">Kártya</span>
+                    </div>
+                    <div class="payment-badge" data-method="wire_transfer" onclick="selectPayment('wire_transfer')">
+                        <span class="payment-icon">🏦</span>
+                        <span class="payment-label" data-i18n="transfer">Átutalás</span>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="discountSelect">Discount</label>
-                    <select id="discountSelect" onchange="applyDiscount()">
-                        <option value="0">No discount</option>
-                        <option value="5">5%</option>
-                        <option value="10">10%</option>
-                        <option value="15">15%</option>
-                    </select>
-                </div>
+                <input type="hidden" id="paymentMethod" value="">
             </div>
 
             <div class="form-group">
-                <label for="recipientEmail">Receipt Email</label>
+                <label for="discountSelect" data-i18n="discount">Kedvezmény</label>
+                <select id="discountSelect" onchange="applyDiscount()">
+                    <option value="0" data-i18n="noDiscount">Nincs kedvezmény</option>
+                    <option value="5">5%</option>
+                    <option value="10">10%</option>
+                    <option value="15">15%</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="recipientEmail" data-i18n="receiptEmail">Számla email</label>
                 <div class="email-input-wrapper">
-                    <input type="email" id="recipientEmail" value="valaki@valaki.com" placeholder="Email for receipt">
-                    <button type="button" class="clear-email-btn" onclick="clearEmail()" title="Clear email">✕</button>
+                    <input type="email" id="recipientEmail" value="valaki@valaki.com" data-i18n-placeholder="emailPlaceholder" placeholder="Email a számlához">
+                    <button type="button" class="clear-email-btn" onclick="clearEmail()" data-i18n-title="clearEmail" title="Email törlése">✕</button>
                 </div>
             </div>
 
             <div class="action-buttons">
-                <button class="btn btn-success" id="generateReceiptBtn" onclick="generateReceipt()" disabled>
-                    Generate Receipt
+                <button class="btn btn-success" id="generateReceiptBtn" onclick="generateReceipt()" disabled data-i18n="generateReceipt">
+                    Számla készítése
                 </button>
-                <button class="btn btn-secondary" onclick="location.href='{{ url_for('main_menu') }}'">
-                    Back to Menu
+                <button class="btn btn-secondary" onclick="location.href='{{ url_for('main_menu') }}'" data-i18n="backToMenu">
+                    Vissza a menübe
                 </button>
             </div>
         </div>
@@ -841,9 +1237,55 @@
     <!-- LOT Selection Modal -->
     <div id="lotModal" class="modal">
         <div class="modal-content">
-            <div class="modal-title">Select LOT Number</div>
+            <div class="modal-title" data-i18n="selectLotNumber">LOT szám kiválasztása</div>
             <div id="lotOptions"></div>
-            <button class="btn btn-secondary" onclick="closeLotModal()">Cancel</button>
+            <button class="btn btn-secondary" onclick="closeLotModal()" data-i18n="cancel">Mégse</button>
+        </div>
+    </div>
+
+    <!-- 500g LOT Selection Modal (select 2 bags from 250g stock) -->
+    <div id="lot500gModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-title" id="lot500gTitle" data-i18n="selectLot500g">LOT számok kiválasztása 500g-hoz</div>
+            <p style="color: var(--gray-500); font-size: 0.85rem; margin-bottom: 16px;" data-i18n="lot500gDescription">
+                Ez az 500g 2×250g zacskóból lesz teljesítve. Válaszd ki a LOT számokat:
+            </p>
+            <div id="lot500gSelection">
+                <div class="lot-500g-row">
+                    <label data-i18n="bag1">1. zacskó:</label>
+                    <select id="lot500g_1" class="lot-500g-select"></select>
+                </div>
+                <div class="lot-500g-row">
+                    <label data-i18n="bag2">2. zacskó:</label>
+                    <select id="lot500g_2" class="lot-500g-select"></select>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button class="btn btn-success" onclick="confirm500gSelection()" data-i18n="addToSale">Hozzáadás</button>
+                <button class="btn btn-secondary" onclick="close500gModal()" data-i18n="cancel">Mégse</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Milk Type Selection Modal -->
+    <div id="milkModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-title" id="milkModalTitle" data-i18n="selectMilkType">Tej típus kiválasztása</div>
+            <div class="milk-options">
+                <div class="milk-option" onclick="selectMilkType('Normál')">
+                    <span class="milk-icon">🥛</span>
+                    <span class="milk-label" data-i18n="milkRegular">Normál</span>
+                </div>
+                <div class="milk-option" onclick="selectMilkType('Laktózmentes')">
+                    <span class="milk-icon">🥛</span>
+                    <span class="milk-label" data-i18n="milkLactoseFree">Laktózmentes</span>
+                </div>
+                <div class="milk-option" onclick="selectMilkType('Növényi')">
+                    <span class="milk-icon">🌱</span>
+                    <span class="milk-label" data-i18n="milkPlantBased">Növényi</span>
+                </div>
+            </div>
+            <button class="btn btn-secondary" onclick="closeMilkModal()" style="margin-top: 16px; width: 100%;" data-i18n="cancel">Mégse</button>
         </div>
     </div>
 
@@ -851,6 +1293,271 @@
         let selectedItems = [];
         let currentItemForLot = null;
         let currentDiscount = 0;
+        let selectedPaymentMethod = '';
+        let current500gItem = null;  // For 500g modal
+        let currentMilkItem = null;  // For milk selection modal
+
+        // ==================== TRANSLATIONS ====================
+        let currentLang = localStorage.getItem('pos_language') || 'hu';
+
+        const translations = {
+            hu: {
+                // Header & Navigation
+                editSession: 'Munkamenet szerkesztése',
+                backToMenu: 'Vissza a menübe',
+
+                // Search & Filters
+                searchProducts: '🔍 Termékek keresése...',
+                allOrigins: 'Összes eredet',
+                allRoasts: 'Összes pörkölés',
+
+                // Sections
+                preparedProducts: 'Előkészített termékek',
+                coffeeShop: '☕ Kávézó',
+                currentSale: '🧾 Aktuális eladás',
+
+                // Table Headers
+                item: 'Termék',
+                price: 'Ár',
+                qty: 'Menny.',
+                discount: 'Kedv.',
+                total: 'Összesen',
+
+                // Payment
+                paymentMethod: 'Fizetési mód',
+                cash: 'Készpénz',
+                card: 'Kártya',
+                transfer: 'Átutalás',
+
+                // Discount
+                noDiscount: 'Nincs kedvezmény',
+
+                // Email
+                receiptEmail: 'Számla email',
+                emailPlaceholder: 'Email a számlához',
+                clearEmail: 'Email törlése',
+
+                // Buttons
+                generateReceipt: 'Számla készítése',
+                cancel: 'Mégse',
+                addToSale: 'Hozzáadás',
+
+                // LOT Modals
+                selectLotNumber: 'LOT szám kiválasztása',
+                selectLot500g: 'LOT számok kiválasztása 500g-hoz',
+                lot500gDescription: 'Ez az 500g 2×250g zacskóból lesz teljesítve. Válaszd ki a LOT számokat:',
+                bag1: '1. zacskó:',
+                bag2: '2. zacskó:',
+                available: 'Elérhető',
+
+                // Milk Modal
+                selectMilkType: 'Tej típus kiválasztása',
+                selectMilkFor: 'Tej kiválasztása - {name}',
+                milkRegular: 'Normál',
+                milkLactoseFree: 'Laktózmentes',
+                milkPlantBased: 'Növényi',
+
+                // Dynamic text
+                totalAmount: 'Összesen: {amount} Ft',
+                products: 'termék',
+                items: 'db',
+                noProducts: 'Nincs találat a szűrőknek megfelelően.',
+                noStock: 'Nincs elérhető készlet ehhez a termékhez',
+                onlyAvailable: 'Csak {count} db elérhető ebből a LOT-ból',
+                needAtLeast2: 'Legalább 2 db 250g szükséges az 500g-hoz',
+                notEnoughStock: 'Nincs elegendő készlet a kiválasztott LOT-okban',
+                receiptCreated: 'Számla sikeresen létrehozva!',
+                errorOccurred: 'Hiba történt',
+                added500g: '{name} hozzáadva (2×250g)',
+                selectValidLots: 'Kérlek válassz érvényes LOT számokat',
+                itemDiscounts: 'Termék kedvezmények',
+                overall: 'Összesített',
+
+                // Category rendering
+                productsCount: '{count} termék / {items} db',
+                itemsCount: '{count} db'
+            },
+            en: {
+                // Header & Navigation
+                editSession: 'Edit Session',
+                backToMenu: 'Back to Menu',
+
+                // Search & Filters
+                searchProducts: '🔍 Search products...',
+                allOrigins: 'All Origins',
+                allRoasts: 'All Roasts',
+
+                // Sections
+                preparedProducts: 'Prepared Products',
+                coffeeShop: '☕ Coffee Shop',
+                currentSale: '🧾 Current Sale',
+
+                // Table Headers
+                item: 'Item',
+                price: 'Price',
+                qty: 'Qty',
+                discount: 'Discount',
+                total: 'Total',
+
+                // Payment
+                paymentMethod: 'Payment Method',
+                cash: 'Cash',
+                card: 'Card',
+                transfer: 'Transfer',
+
+                // Discount
+                noDiscount: 'No discount',
+
+                // Email
+                receiptEmail: 'Receipt Email',
+                emailPlaceholder: 'Email for receipt',
+                clearEmail: 'Clear email',
+
+                // Buttons
+                generateReceipt: 'Generate Receipt',
+                cancel: 'Cancel',
+                addToSale: 'Add to Sale',
+
+                // LOT Modals
+                selectLotNumber: 'Select LOT Number',
+                selectLot500g: 'Select LOT Numbers for 500g',
+                lot500gDescription: 'This 500g will be fulfilled with 2×250g bags. Select LOT numbers:',
+                bag1: 'Bag 1:',
+                bag2: 'Bag 2:',
+                available: 'Available',
+
+                // Milk Modal
+                selectMilkType: 'Select Milk Type',
+                selectMilkFor: 'Select Milk for {name}',
+                milkRegular: 'Regular',
+                milkLactoseFree: 'Lactose free',
+                milkPlantBased: 'Plant based',
+
+                // Dynamic text
+                totalAmount: 'Total: {amount} Ft',
+                products: 'products',
+                items: 'items',
+                noProducts: 'No products match your filters.',
+                noStock: 'No stock available for this item',
+                onlyAvailable: 'Only {count} available for this LOT',
+                needAtLeast2: 'Need at least 2 units of 250g to make 500g',
+                notEnoughStock: 'Not enough stock in selected LOTs',
+                receiptCreated: 'Receipt created successfully!',
+                errorOccurred: 'An error occurred',
+                added500g: 'Added {name} (2×250g)',
+                selectValidLots: 'Please select valid LOT numbers',
+                itemDiscounts: 'Item discounts',
+                overall: 'Overall',
+
+                // Category rendering
+                productsCount: '{count} products / {items} items',
+                itemsCount: '{count} items'
+            }
+        };
+
+        // Get translation with optional parameter replacement
+        function t(key, params = {}) {
+            let text = translations[currentLang][key] || translations['hu'][key] || key;
+            for (const [param, value] of Object.entries(params)) {
+                text = text.replace(`{${param}}`, value);
+            }
+            return text;
+        }
+
+        // Set language and update UI
+        function setLanguage(lang) {
+            currentLang = lang;
+            localStorage.setItem('pos_language', lang);
+
+            // Update toggle buttons
+            document.querySelectorAll('.lang-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.lang === lang);
+            });
+
+            // Update all elements with data-i18n attribute
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.dataset.i18n;
+                if (translations[lang][key]) {
+                    el.textContent = translations[lang][key];
+                }
+            });
+
+            // Update placeholders
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                const key = el.dataset.i18nPlaceholder;
+                if (translations[lang][key]) {
+                    el.placeholder = translations[lang][key];
+                }
+            });
+
+            // Update titles
+            document.querySelectorAll('[data-i18n-title]').forEach(el => {
+                const key = el.dataset.i18nTitle;
+                if (translations[lang][key]) {
+                    el.title = translations[lang][key];
+                }
+            });
+
+            // Re-render dynamic content
+            filterProducts();
+            updateTotal();
+        }
+
+        // Initialize language on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set initial language from localStorage
+            const savedLang = localStorage.getItem('pos_language') || 'hu';
+            setLanguage(savedLang);
+        });
+
+        // ==================== END TRANSLATIONS ====================
+
+        // Milk-based drink categories that require milk type selection
+        const milkBasedCategories = ['Tejeskávék'];
+
+        // Piacos (market day) pricing - discounted fixed prices
+        let piacosMode = false;
+        const piacosPrices = {
+            'Espresso': 500,      // Category: Espresso drinks at 500 Ft
+            'Tejeskávék': 800     // Category: Milk-based drinks at 800 Ft
+        };
+
+        // 500g products from catalog (not in stock, but can be fulfilled with 2x250g)
+        const products500g = {
+            {% for p in products_500g %}
+            '{{ p[1]|e }}': {
+                id: {{ p[0] }},
+                name: '{{ p[1]|e }}',
+                price: {{ p[2] }},
+                vat: '{{ p[3] }}',
+                image: '{{ p[4] or "" }}',
+                attributes: {{ p[5]|tojson|safe if p[5] else '{}' }},
+                // The matching 250g product name (replace 500g with 250g)
+                matching250gName: '{{ p[1]|e }}'.replace('500g', '250g')
+            },
+            {% endfor %}
+        };
+
+        function selectPayment(method) {
+            selectedPaymentMethod = method;
+            document.getElementById('paymentMethod').value = method;
+
+            // Update badge styles
+            document.querySelectorAll('.payment-badge').forEach(badge => {
+                badge.classList.remove('selected');
+            });
+            document.querySelector(`.payment-badge[data-method="${method}"]`).classList.add('selected');
+
+            // Update button state
+            updateGenerateButtonState();
+        }
+
+        function updateGenerateButtonState() {
+            const btn = document.getElementById('generateReceiptBtn');
+            const hasItems = selectedItems.length > 0;
+            const hasPayment = selectedPaymentMethod !== '';
+            btn.disabled = !hasItems || !hasPayment;
+        }
 
         // Market items data for LOT lookup
         const marketItemsData = {};
@@ -868,7 +1575,8 @@
             vat: '{{ item[6] }}',
             image: '{{ item[7] or "" }}',
             categoryName: '{{ item[8] or "Uncategorized" }}',
-            categoryId: {{ item[9] or 0 }}
+            categoryId: {{ item[9] or 0 }},
+            attributes: {{ item[10]|tojson|safe if item[10] else '{}' }}
         });
         {% endfor %}
 
@@ -879,15 +1587,136 @@
             {% endfor %}
         ];
 
+        // Coffee shop items data
+        const coffeeItemsData = [
+            {% for item in coffee_items %}
+            {
+                id: {{ item[0] }},
+                name: '{{ item[1]|e }}',
+                price: {{ item[2] }},
+                vat: '{{ item[3] }}',
+                image: '{{ item[4] or "" }}',
+                categoryName: '{{ item[5] or "Coffee" }}'
+            },
+            {% endfor %}
+        ];
+
+        // Group coffee items by category
+        function getCoffeeByCategory() {
+            const byCategory = {};
+            coffeeItemsData.forEach(item => {
+                const catName = item.categoryName || 'Coffee';
+                if (!byCategory[catName]) {
+                    byCategory[catName] = [];
+                }
+                byCategory[catName].push(item);
+            });
+            return byCategory;
+        }
+
+        // Render coffee items grouped by category
+        function renderCoffeeItems(searchTerm = '') {
+            const container = document.getElementById('coffeeCategories');
+            if (!container) return;
+
+            const byCategory = getCoffeeByCategory();
+            const categoryNames = Object.keys(byCategory).sort();
+
+            if (categoryNames.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+
+            let html = '';
+            categoryNames.forEach(catName => {
+                let items = byCategory[catName];
+
+                // Filter by search term
+                if (searchTerm) {
+                    items = items.filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()));
+                }
+
+                if (items.length === 0) return;
+
+                const isExpanded = searchTerm ? true : false;
+
+                html += `
+                    <div class="category-section" data-category="${catName.toLowerCase()}">
+                        <div class="category-header ${isExpanded ? 'expanded' : ''}" onclick="toggleCategory(this)">
+                            <span>
+                                ${catName}
+                                <span class="item-count">${t('itemsCount', {count: items.length})}</span>
+                            </span>
+                            <span class="arrow">▼</span>
+                        </div>
+                        <div class="category-items ${isExpanded ? 'expanded' : ''}">
+                            ${items.map(item => renderCoffeeTile(item)).join('')}
+                        </div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
+
+        function togglePiacosMode() {
+            piacosMode = document.getElementById('piacosToggle').checked;
+            // Re-render coffee items with updated prices
+            const searchTerm = document.getElementById('productSearch').value;
+            renderCoffeeItems(searchTerm);
+        }
+
+        function getPiacosPrice(categoryName, originalPrice) {
+            if (!piacosMode) return originalPrice;
+            return piacosPrices[categoryName] || originalPrice;
+        }
+
+        function renderCoffeeTile(item) {
+            const imageHtml = item.image
+                ? `<img src="${item.image}" alt="${item.name}">`
+                : `<div class="placeholder-img">☕</div>`;
+            const displayName = item.name.length > 25
+                ? item.name.substring(0, 25) + '...'
+                : item.name;
+
+            // Get the actual price (original or Piacos)
+            const actualPrice = getPiacosPrice(item.categoryName, item.price);
+            const isPiacosItem = piacosMode && piacosPrices[item.categoryName] && actualPrice !== item.price;
+
+            // Price display with Piacos indication
+            const priceHtml = isPiacosItem
+                ? `<span class="original-price">${Math.round(item.price)}</span><span class="piacos-price">${Math.round(actualPrice)} Ft</span>`
+                : `${Math.round(actualPrice)} Ft`;
+
+            return `
+                <div class="item-tile coffee-item ${isPiacosItem ? 'piacos-active' : ''}"
+                     onclick="addCoffeeItem(${item.id}, '${item.name.replace(/'/g, "\\'")}', ${actualPrice}, '${item.vat}', '${(item.categoryName || '').replace(/'/g, "\\'")}')"
+                     data-name="${item.name.toLowerCase()}"
+                     data-category="${item.categoryName || ''}"
+                     data-original-price="${item.price}">
+                    ${imageHtml}
+                    <div class="name">${displayName}</div>
+                    <div class="price">${priceHtml}</div>
+                </div>
+            `;
+        }
+
         // Group products by itemId for display
         function getGroupedProducts() {
             const grouped = {};
+            const productsByName = {};  // To find 250g products by name for 500g matching
+
             for (const itemId in marketItemsData) {
                 const lots = marketItemsData[itemId];
                 if (lots.length > 0) {
                     const firstLot = lots[0];
                     const totalStock = lots.reduce((sum, lot) => sum + lot.remaining, 0);
-                    grouped[itemId] = {
+                    // Parse attributes if it's a string
+                    let attrs = firstLot.attributes;
+                    if (typeof attrs === 'string') {
+                        try { attrs = JSON.parse(attrs); } catch(e) { attrs = {}; }
+                    }
+                    const product = {
                         itemId: parseInt(itemId),
                         name: firstLot.name,
                         price: firstLot.price,
@@ -896,10 +1725,51 @@
                         totalStock: totalStock,
                         lotCount: lots.length,
                         categoryName: firstLot.categoryName,
-                        categoryId: firstLot.categoryId
+                        categoryId: firstLot.categoryId,
+                        origin: attrs?.Origin || '',
+                        roast: attrs?.Roast || '',
+                        is500gVirtual: false
+                    };
+                    grouped[itemId] = product;
+                    productsByName[firstLot.name] = product;
+                }
+            }
+
+            // Check for 500g products that can be fulfilled with 250g stock
+            for (const name500g in products500g) {
+                const p500g = products500g[name500g];
+                const matching250gName = p500g.matching250gName;
+
+                // Find the 250g product in our available stock
+                const product250g = productsByName[matching250gName];
+                if (product250g && product250g.totalStock >= 2) {
+                    // We have at least 2 units of 250g, so show the 500g option
+                    let attrs = p500g.attributes;
+                    if (typeof attrs === 'string') {
+                        try { attrs = JSON.parse(attrs); } catch(e) { attrs = {}; }
+                    }
+
+                    // Use a virtual ID (negative to avoid collision)
+                    const virtualId = -p500g.id;
+                    grouped[virtualId] = {
+                        itemId: p500g.id,
+                        name: p500g.name,
+                        price: p500g.price,
+                        vat: p500g.vat,
+                        image: p500g.image || product250g.image,
+                        totalStock: Math.floor(product250g.totalStock / 2),  // How many 500g can be made
+                        lotCount: product250g.lotCount,
+                        categoryName: product250g.categoryName,
+                        categoryId: product250g.categoryId,
+                        origin: attrs?.Origin || product250g.origin,
+                        roast: attrs?.Roast || product250g.roast,
+                        is500gVirtual: true,
+                        source250gItemId: product250g.itemId,
+                        source250gName: matching250gName
                     };
                 }
             }
+
             return grouped;
         }
 
@@ -921,18 +1791,19 @@
         }
 
         // Render prepared products grouped by category
-        function renderPreparedProducts(searchTerm = '') {
+        function renderPreparedProducts(searchTerm = '', originFilter = '', roastFilter = '') {
             const container = document.getElementById('preparedCategories');
             const byCategory = getProductsByCategory();
             const categoryNames = Object.keys(byCategory).sort();
 
             if (categoryNames.length === 0) {
                 container.innerHTML = `<p style="color: var(--gray-500); padding: 20px;">
-                    No prepared products. <a href="/prepare_market">Prepare some products first.</a>
+                    ${currentLang === 'hu' ? 'Nincs előkészített termék.' : 'No prepared products.'} <a href="/prepare_market">${currentLang === 'hu' ? 'Készíts elő néhány terméket.' : 'Prepare some products first.'}</a>
                 </p>`;
                 return;
             }
 
+            const hasFilters = searchTerm || originFilter || roastFilter;
             let html = '';
             categoryNames.forEach(catName => {
                 let products = byCategory[catName];
@@ -942,17 +1813,27 @@
                     products = products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
                 }
 
+                // Filter by origin
+                if (originFilter) {
+                    products = products.filter(p => p.origin === originFilter);
+                }
+
+                // Filter by roast
+                if (roastFilter) {
+                    products = products.filter(p => p.roast === roastFilter);
+                }
+
                 if (products.length === 0) return;
 
                 const totalItems = products.reduce((sum, p) => sum + p.totalStock, 0);
-                const isExpanded = searchTerm ? true : false; // Auto-expand when searching
+                const isExpanded = hasFilters ? true : false; // Auto-expand when filtering
 
                 html += `
                     <div class="category-section" data-category="${catName.toLowerCase()}">
                         <div class="category-header ${isExpanded ? 'expanded' : ''}" onclick="toggleCategory(this)">
                             <span>
                                 ${catName}
-                                <span class="item-count">${products.length} products / ${totalItems} items</span>
+                                <span class="item-count">${t('productsCount', {count: products.length, items: totalItems})}</span>
                             </span>
                             <span class="arrow">▼</span>
                         </div>
@@ -964,7 +1845,7 @@
             });
 
             if (!html) {
-                html = `<p style="color: var(--gray-500); padding: 20px;">No products match your search.</p>`;
+                html = `<p style="color: var(--gray-500); padding: 20px;">${t('noProducts')}</p>`;
             }
 
             container.innerHTML = html;
@@ -975,22 +1856,44 @@
             const imageHtml = product.image
                 ? `<img src="${product.image}" alt="${product.name}">`
                 : `<div class="placeholder-img">📦</div>`;
-            const lotBadge = product.lotCount > 1
+            const lotBadge = product.lotCount > 1 && !product.is500gVirtual
                 ? `<span class="lot-count-badge">${product.lotCount} LOTs</span>`
                 : '';
             const displayName = product.name.length > 25
                 ? product.name.substring(0, 25) + '...'
                 : product.name;
 
+            // Build attributes display
+            let attrsHtml = '';
+            if (product.origin || product.roast) {
+                const parts = [];
+                if (product.origin) parts.push(product.origin);
+                if (product.roast) parts.push(product.roast);
+                attrsHtml = `<div class="product-attrs">${parts.join(' · ')}</div>`;
+            }
+
+            // For 500g virtual products, show special badge and different click handler
+            const virtual500gBadge = product.is500gVirtual
+                ? `<span class="virtual-500g-badge">2×250g</span>`
+                : '';
+
+            const clickHandler = product.is500gVirtual
+                ? `select500gItem(${product.itemId}, '${product.name.replace(/'/g, "\\'")}', ${product.price}, '${product.vat}', ${product.source250gItemId}, '${product.source250gName.replace(/'/g, "\\'")}')`
+                : `selectPreparedItem(${product.itemId}, '${product.name.replace(/'/g, "\\'")}', ${product.price}, '${product.vat}')`;
+
             return `
-                <div class="item-tile ${product.totalStock === 0 ? 'out-of-stock' : ''}"
-                     onclick="selectPreparedItem(${product.itemId}, '${product.name.replace(/'/g, "\\'")}', ${product.price}, '${product.vat}')"
+                <div class="item-tile ${product.totalStock === 0 ? 'out-of-stock' : ''} ${product.is500gVirtual ? 'virtual-500g' : ''}"
+                     onclick="${clickHandler}"
                      data-item-id="${product.itemId}"
-                     data-name="${product.name.toLowerCase()}">
+                     data-name="${product.name.toLowerCase()}"
+                     data-origin="${product.origin || ''}"
+                     data-roast="${product.roast || ''}">
                     ${lotBadge}
+                    ${virtual500gBadge}
                     <span class="stock-badge ${stockClass}">${product.totalStock}</span>
                     ${imageHtml}
                     <div class="name">${displayName}</div>
+                    ${attrsHtml}
                     <div class="price">${Math.round(product.price)} Ft</div>
                 </div>
             `;
@@ -1002,26 +1905,24 @@
             items.classList.toggle('expanded');
         }
 
-        // Filter products by search
+        // Filter products by search and attributes
         function filterProducts() {
             const searchTerm = document.getElementById('productSearch').value;
-            renderPreparedProducts(searchTerm);
+            const originFilterEl = document.getElementById('originFilter');
+            const roastFilterEl = document.getElementById('roastFilter');
+            const originFilter = originFilterEl ? originFilterEl.value : '';
+            const roastFilter = roastFilterEl ? roastFilterEl.value : '';
 
-            // Also filter coffee items
-            const coffeeItems = document.querySelectorAll('.coffee-item');
-            coffeeItems.forEach(item => {
-                const name = item.querySelector('.name').textContent.toLowerCase();
-                if (searchTerm && !name.includes(searchTerm.toLowerCase())) {
-                    item.style.display = 'none';
-                } else {
-                    item.style.display = 'block';
-                }
-            });
+            renderPreparedProducts(searchTerm, originFilter, roastFilter);
+
+            // Also filter coffee items by search (re-render with search term)
+            renderCoffeeItems(searchTerm);
         }
 
         // Initialize products on page load
         document.addEventListener('DOMContentLoaded', function() {
             renderPreparedProducts();
+            renderCoffeeItems();
         });
 
         function selectPreparedItem(itemId, name, price, vat) {
@@ -1058,7 +1959,7 @@
             optionsDiv.innerHTML = lots.filter(lot => lot.remaining > 0).map(lot => `
                 <div class="lot-option" onclick="selectLot(${lot.marketSessionItemId}, '${lot.lotNumber}', ${lot.remaining})">
                     <div class="lot-number">LOT: ${lot.lotNumber}</div>
-                    <div class="lot-stock">Available: ${lot.remaining}</div>
+                    <div class="lot-stock">${t('available')}: ${lot.remaining}</div>
                 </div>
             `).join('');
             document.getElementById('lotModal').style.display = 'block';
@@ -1067,6 +1968,133 @@
         function closeLotModal() {
             document.getElementById('lotModal').style.display = 'none';
             currentItemForLot = null;
+        }
+
+        // 500g virtual product selection
+        function select500gItem(itemId500g, name500g, price500g, vat500g, source250gItemId, source250gName) {
+            const lots250g = marketItemsData[source250gItemId];
+            if (!lots250g || lots250g.length === 0) {
+                showToast(t('noStock'), 'error');
+                return;
+            }
+
+            // Get available lots with stock
+            const availableLots = lots250g.filter(lot => lot.remaining > 0);
+            const totalStock = availableLots.reduce((sum, lot) => sum + lot.remaining, 0);
+
+            if (totalStock < 2) {
+                showToast(t('needAtLeast2'), 'error');
+                return;
+            }
+
+            // Store current 500g item info
+            current500gItem = {
+                itemId: itemId500g,
+                name: name500g,
+                price: price500g,
+                vat: vat500g,
+                source250gItemId: source250gItemId,
+                source250gName: source250gName,
+                availableLots: availableLots
+            };
+
+            // If only one LOT available, auto-select it for both bags
+            if (availableLots.length === 1 && availableLots[0].remaining >= 2) {
+                // Auto-add with same LOT for both bags
+                add500gWithLots(availableLots[0], availableLots[0]);
+                return;
+            }
+
+            // Populate the dropdowns
+            const select1 = document.getElementById('lot500g_1');
+            const select2 = document.getElementById('lot500g_2');
+
+            const optionsHtml = availableLots.map(lot =>
+                `<option value="${lot.marketSessionItemId}" data-remaining="${lot.remaining}">
+                    LOT: ${lot.lotNumber} (${lot.remaining} ${t('available').toLowerCase()})
+                </option>`
+            ).join('');
+
+            select1.innerHTML = optionsHtml;
+            select2.innerHTML = optionsHtml;
+
+            // Set title with product name
+            document.getElementById('lot500gTitle').textContent = `${t('selectLot500g')} - ${name500g}`;
+
+            // Show modal
+            document.getElementById('lot500gModal').style.display = 'block';
+        }
+
+        function close500gModal() {
+            document.getElementById('lot500gModal').style.display = 'none';
+            current500gItem = null;
+        }
+
+        function confirm500gSelection() {
+            if (!current500gItem) return;
+
+            const select1 = document.getElementById('lot500g_1');
+            const select2 = document.getElementById('lot500g_2');
+
+            const lotId1 = parseInt(select1.value);
+            const lotId2 = parseInt(select2.value);
+
+            // Find the lot objects
+            const lot1 = current500gItem.availableLots.find(l => l.marketSessionItemId === lotId1);
+            const lot2 = current500gItem.availableLots.find(l => l.marketSessionItemId === lotId2);
+
+            if (!lot1 || !lot2) {
+                showToast(t('selectValidLots'), 'error');
+                return;
+            }
+
+            // Check if we have enough stock
+            if (lotId1 === lotId2) {
+                // Same LOT for both bags - need at least 2
+                if (lot1.remaining < 2) {
+                    showToast(t('onlyAvailable', {count: lot1.remaining}), 'error');
+                    return;
+                }
+            } else {
+                // Different LOTs - need at least 1 each
+                if (lot1.remaining < 1 || lot2.remaining < 1) {
+                    showToast(t('notEnoughStock'), 'error');
+                    return;
+                }
+            }
+
+            add500gWithLots(lot1, lot2);
+            close500gModal();
+        }
+
+        function add500gWithLots(lot1, lot2) {
+            // Add a 500g item to the basket that will deduct from 250g stock
+            // Always show both lot numbers explicitly (even if same) for invoice clarity
+            const lotNumbers = `${lot1.lotNumber} + ${lot2.lotNumber}`;
+
+            selectedItems.push({
+                // Use negative ID to indicate it's a virtual 500g item
+                marketSessionItemId: null,
+                itemId: current500gItem.itemId,
+                name: current500gItem.name,
+                price: current500gItem.price,
+                vat: current500gItem.vat,
+                quantity: 1,
+                lotNumber: lotNumbers,
+                maxQuantity: 1,  // For 500g, we control max separately
+                isPrepared: true,
+                is500gVirtual: true,
+                discount: 0,
+                // Track which 250g lots to deduct from
+                source250gLots: [
+                    { marketSessionItemId: lot1.marketSessionItemId, lotNumber: lot1.lotNumber },
+                    { marketSessionItemId: lot2.marketSessionItemId, lotNumber: lot2.lotNumber }
+                ]
+            });
+
+            displaySelectedItems();
+            updateTotal();
+            showToast(t('added500g', {name: current500gItem.name}), 'success');
         }
 
         function selectLot(marketSessionItemId, lotNumber, remaining) {
@@ -1111,9 +2139,40 @@
             updateTotal();
         }
 
-        function addCoffeeItem(id, name, price, vat) {
+        function addCoffeeItem(id, name, price, vat, categoryName) {
+            // Check if this is a milk-based drink that requires milk type selection
+            if (milkBasedCategories.includes(categoryName)) {
+                // Show milk selection modal
+                currentMilkItem = { id, name, price, vat, categoryName };
+                document.getElementById('milkModalTitle').textContent = t('selectMilkFor', {name: name});
+                document.getElementById('milkModal').style.display = 'block';
+                return;
+            }
+
+            // Non-milk drinks: add directly
+            addCoffeeItemWithMilk(id, name, price, vat, null);
+        }
+
+        function selectMilkType(milkType) {
+            if (!currentMilkItem) return;
+
+            const { id, name, price, vat } = currentMilkItem;
+            addCoffeeItemWithMilk(id, name, price, vat, milkType);
+            closeMilkModal();
+        }
+
+        function closeMilkModal() {
+            document.getElementById('milkModal').style.display = 'none';
+            currentMilkItem = null;
+        }
+
+        function addCoffeeItemWithMilk(id, name, price, vat, milkType) {
+            // Build the display name with milk type if applicable
+            const displayName = milkType ? `${name} (${milkType})` : name;
+
+            // For milk-based drinks, we need to match by base name AND milk type
             const existingIndex = selectedItems.findIndex(
-                item => !item.isPrepared && item.itemId === id
+                item => !item.isPrepared && item.itemId === id && item.milkType === milkType
             );
 
             if (existingIndex >= 0) {
@@ -1121,13 +2180,15 @@
             } else {
                 selectedItems.push({
                     itemId: id,
-                    name: name,
+                    name: displayName,
+                    baseName: name,  // Keep original name for reference
                     price: price,
                     vat: vat,
                     quantity: 1,
                     lotNumber: '',
                     isPrepared: false,
-                    discount: 0
+                    discount: 0,
+                    milkType: milkType
                 });
             }
 
@@ -1172,7 +2233,7 @@
                 `;
             }).join('');
 
-            document.getElementById('generateReceiptBtn').disabled = selectedItems.length === 0;
+            updateGenerateButtonState();
         }
 
         function updateItemDiscount(index, value) {
@@ -1226,21 +2287,55 @@
             if (currentDiscount > 0 || itemDiscountTotal > 0) {
                 let discountInfo = '';
                 if (itemDiscountTotal > 0) {
-                    discountInfo += `Item discounts: -${Math.round(itemDiscountTotal).toLocaleString()} Ft`;
+                    discountInfo += `${t('itemDiscounts')}: -${Math.round(itemDiscountTotal).toLocaleString()} Ft`;
                 }
                 if (currentDiscount > 0) {
                     if (itemDiscountTotal > 0) discountInfo += ' | ';
-                    discountInfo += `Overall ${currentDiscount}%: -${Math.round(overallDiscountAmount).toLocaleString()} Ft`;
+                    discountInfo += `${t('overall')} ${currentDiscount}%: -${Math.round(overallDiscountAmount).toLocaleString()} Ft`;
                 }
 
-                document.getElementById('totalDisplay').innerHTML = `Total: <strong>${Math.round(total).toLocaleString()} Ft</strong>`;
+                document.getElementById('totalDisplay').innerHTML = `${t('total')}: <strong>${Math.round(total).toLocaleString()} Ft</strong>`;
                 document.getElementById('discountDisplay').style.display = 'block';
                 document.getElementById('discountDisplay').innerHTML =
                     `<s>${Math.round(subtotalBeforeItemDiscounts).toLocaleString()} Ft</s> → ${discountInfo}`;
             } else {
-                document.getElementById('totalDisplay').innerHTML = `Total: ${Math.round(total).toLocaleString()} Ft`;
+                document.getElementById('totalDisplay').innerHTML = `${t('total')}: ${Math.round(total).toLocaleString()} Ft`;
                 document.getElementById('discountDisplay').style.display = 'none';
             }
+
+            // Broadcast sale update to customer display
+            broadcastSaleUpdate('active');
+        }
+
+        // Broadcast sale updates to customer display
+        function broadcastSaleUpdate(status = 'active') {
+            const items = selectedItems.map(item => ({
+                name: item.name,
+                price: item.price,
+                quantity: item.quantity,
+                discount: item.discount || 0,
+                lotNumber: item.lotNumber || ''
+            }));
+
+            const subtotalAfterItemDiscounts = selectedItems.reduce((sum, item) => {
+                const itemSubtotal = item.price * item.quantity;
+                const itemDiscount = item.discount || 0;
+                return sum + (itemSubtotal - (itemSubtotal * itemDiscount / 100));
+            }, 0);
+
+            const overallDiscountAmount = subtotalAfterItemDiscounts * (currentDiscount / 100);
+            const total = subtotalAfterItemDiscounts - overallDiscountAmount;
+
+            fetch('/api/update_sale', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    items: items,
+                    total: total,
+                    discount: currentDiscount,
+                    status: status
+                })
+            }).catch(err => console.error('Error broadcasting sale:', err));
         }
 
         function clearEmail() {
@@ -1248,20 +2343,14 @@
             document.getElementById('recipientEmail').focus();
         }
 
-        function filterCoffeeItems() {
-            const category = document.getElementById('coffeeFilter').value;
-            document.querySelectorAll('.coffee-item').forEach(item => {
-                if (category === 'all' || item.dataset.category === category) {
-                    item.style.display = 'block';
-                } else {
-                    item.style.display = 'none';
-                }
-            });
-        }
-
         async function generateReceipt() {
             if (selectedItems.length === 0) {
                 alert('No items selected');
+                return;
+            }
+
+            if (!selectedPaymentMethod) {
+                alert('Please select a payment method');
                 return;
             }
 
@@ -1271,7 +2360,7 @@
                 return;
             }
 
-            const paymentMethod = document.getElementById('paymentMethod').value;
+            const paymentMethod = selectedPaymentMethod;
 
             // Calculate totals with per-item discounts
             const subtotalBeforeItemDiscounts = selectedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -1297,12 +2386,24 @@
             });
 
             // Prepare market item sales for stock update
-            const marketItemSales = selectedItems
-                .filter(item => item.isPrepared)
-                .map(item => ({
-                    market_session_item_id: item.marketSessionItemId,
-                    quantity: item.quantity
-                }));
+            const marketItemSales = [];
+            selectedItems.filter(item => item.isPrepared).forEach(item => {
+                if (item.is500gVirtual && item.source250gLots) {
+                    // For 500g virtual items, deduct from 250g lots
+                    item.source250gLots.forEach(lot => {
+                        marketItemSales.push({
+                            market_session_item_id: lot.marketSessionItemId,
+                            quantity: 1  // Each lot contributes 1 unit (250g)
+                        });
+                    });
+                } else if (item.marketSessionItemId) {
+                    // Regular prepared item
+                    marketItemSales.push({
+                        market_session_item_id: item.marketSessionItemId,
+                        quantity: item.quantity
+                    });
+                }
+            });
 
             const payload = {
                 items: receiptItems,
@@ -1315,7 +2416,7 @@
             // Show loading state
             const btn = document.getElementById('generateReceiptBtn');
             btn.disabled = true;
-            btn.innerHTML = '<span class="spinner"></span> Processing...';
+            btn.innerHTML = `<span class="spinner"></span> ${currentLang === 'hu' ? 'Feldolgozás...' : 'Processing...'}`;
 
             try {
                 // Create receipt
@@ -1328,9 +2429,9 @@
                 const receiptData = await receiptResponse.json();
 
                 if (!receiptResponse.ok) {
-                    alert('Error creating receipt: ' + (receiptData.message || 'Unknown error'));
+                    alert((currentLang === 'hu' ? 'Hiba a számla létrehozásakor: ' : 'Error creating receipt: ') + (receiptData.message || (currentLang === 'hu' ? 'Ismeretlen hiba' : 'Unknown error')));
                     btn.disabled = false;
-                    btn.textContent = 'Generate Receipt';
+                    btn.textContent = t('generateReceipt');
                     return;
                 }
 
@@ -1355,26 +2456,34 @@
                     });
                 }
 
-                showToast('Receipt created successfully!', 'success');
+                showToast(t('receiptCreated'), 'success');
+
+                // Broadcast completed status to customer display
+                broadcastSaleUpdate('completed');
 
                 // Reset for next sale
                 selectedItems = [];
                 currentDiscount = 0;
+                selectedPaymentMethod = '';
                 document.getElementById('discountSelect').value = '0';
+                document.querySelectorAll('.payment-badge').forEach(b => b.classList.remove('selected'));
+                document.getElementById('paymentMethod').value = '';
                 displaySelectedItems();
-                updateTotal();
+                // Don't call updateTotal() here as it would broadcast 'active' status with empty items
+                document.getElementById('totalDisplay').innerHTML = `${t('total')}: 0 Ft`;
+                document.getElementById('discountDisplay').style.display = 'none';
                 document.getElementById('recipientEmail').value = 'valaki@valaki.com';
-                btn.disabled = false;
-                btn.textContent = 'Generate Receipt';
+                btn.disabled = true;
+                btn.textContent = t('generateReceipt');
 
                 // Reload to update stock counts
-                setTimeout(() => location.reload(), 1000);
+                setTimeout(() => location.reload(), 1500);
 
             } catch (error) {
                 console.error('Error:', error);
-                showToast('An error occurred', 'error');
+                showToast(t('errorOccurred'), 'error');
                 btn.disabled = false;
-                btn.textContent = 'Generate Receipt';
+                btn.textContent = t('generateReceipt');
             }
         }
 

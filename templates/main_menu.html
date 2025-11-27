@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Café Tiko POS</title>
+    <title>Cafe Tiko POS</title>
+    <link rel="icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-32x32.png" sizes="32x32">
+    <link rel="icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-192x192.png" sizes="192x192">
+    <link rel="apple-touch-icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-180x180.png">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-    <!-- Google Sign-In JavaScript SDK -->
-    <script src="https://apis.google.com/js/platform.js" async defer></script>
-    <meta name="google-signin-client_id" content="763921534105-jnam8h4labefeg3sh44m1coid3tpvpba.apps.googleusercontent.com">
 
     <style>
         /* Environment indicator */
@@ -44,7 +44,7 @@
         .hero h1 {
             font-size: 2.5rem;
             margin-bottom: 0.5rem;
-            background: linear-gradient(135deg, #92400e 0%, #d97706 100%);
+            background: linear-gradient(135deg, #a71d31 0%, #794f2b 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -87,15 +87,15 @@
             box-shadow: var(--shadow-md);
         }
         .menu-card.primary {
-            background: linear-gradient(135deg, var(--success) 0%, var(--success-dark) 100%);
+            background: linear-gradient(135deg, #f5bc00 0%, #cd9a59 100%);
             border: none;
-            color: white;
+            color: #794f2b;
         }
         .menu-card.primary:hover {
             filter: brightness(1.05);
         }
         .menu-card.secondary {
-            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            background: linear-gradient(135deg, #a71d31 0%, #794f2b 100%);
             border: none;
             color: white;
         }
@@ -148,6 +148,39 @@
             height: 8px;
             background: var(--success);
             border-radius: 50%;
+        }
+
+        /* Language toggle styles */
+        .lang-toggle {
+            position: fixed;
+            bottom: 20px;
+            right: 12px;
+            z-index: 1001;
+            display: flex;
+            gap: 4px;
+            background: white;
+            padding: 4px;
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+        }
+        .lang-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 16px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: transparent;
+            color: var(--gray-500);
+        }
+        .lang-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+        .lang-btn:hover:not(.active) {
+            background: var(--gray-100);
+            color: var(--gray-700);
         }
 
         /* Responsive */
@@ -219,6 +252,7 @@
             const btn = document.getElementById('updateCatalogBtn');
             const progress = document.getElementById('updateProgress');
             const progressText = progress.querySelector('.progress-text');
+            const progressFill = progress.querySelector('.progress-fill');
             const summaryDiv = document.getElementById('updateSummary');
 
             // Get selected languages
@@ -235,19 +269,31 @@
             btn.innerHTML = '<span class="spinner"></span> Updating...';
             progress.style.display = 'block';
             summaryDiv.style.display = 'none';
+            progressFill.style.animation = 'progressAnimation 2s ease-in-out infinite';
+            progressFill.style.width = '30%';
+            progressFill.style.background = 'linear-gradient(90deg, var(--primary) 0%, var(--success) 100%)';
 
-            fetch('/update_catalog', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ languages: languages })
-            })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === "success") {
-                        progressText.textContent = '✓ Catalog updated successfully!';
-                        progress.querySelector('.progress-fill').style.animation = 'none';
-                        progress.querySelector('.progress-fill').style.width = '100%';
-                        progress.querySelector('.progress-fill').style.background = 'var(--success)';
+            // Build URL with language parameters
+            const langParams = languages.map(l => `lang=${l}`).join('&');
+            const eventSource = new EventSource(`/update_catalog_stream?${langParams}`);
+
+            eventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+
+                switch(data.type) {
+                    case 'start':
+                    case 'status':
+                        progressText.textContent = data.message;
+                        break;
+                    case 'progress':
+                        progressText.textContent = data.message;
+                        break;
+                    case 'complete':
+                        eventSource.close();
+                        progressText.textContent = '✓ ' + data.message;
+                        progressFill.style.animation = 'none';
+                        progressFill.style.width = '100%';
+                        progressFill.style.background = 'var(--success)';
 
                         // Show summary
                         if (data.summary) {
@@ -275,24 +321,34 @@
                         }
 
                         showToast('Catalog updated successfully!', 'success');
-                    } else {
-                        progressText.textContent = '✗ Failed: ' + data.message;
-                        progress.querySelector('.progress-fill').style.background = 'var(--danger)';
+                        btn.classList.remove('btn-loading');
+                        btn.innerHTML = '<span class="btn-text">🔄 Update Catalog from WooCommerce</span>';
+                        setTimeout(() => { progress.style.display = 'none'; }, 3000);
+                        break;
+                    case 'error':
+                        eventSource.close();
+                        progressText.textContent = '✗ Error: ' + data.message;
+                        progressFill.style.animation = 'none';
+                        progressFill.style.background = 'var(--danger)';
                         showToast('Failed to update: ' + data.message, 'error');
-                    }
-                    btn.classList.remove('btn-loading');
-                    btn.innerHTML = '<span class="btn-text">🔄 Update Catalog from WooCommerce</span>';
-                    setTimeout(() => { progress.style.display = 'none'; }, 3000);
-                })
-                .catch(error => {
-                    console.error("Error updating catalog:", error);
-                    progressText.textContent = '✗ An error occurred';
-                    progress.querySelector('.progress-fill').style.background = 'var(--danger)';
-                    showToast('An error occurred while updating', 'error');
-                    btn.classList.remove('btn-loading');
-                    btn.innerHTML = '<span class="btn-text">🔄 Update Catalog from WooCommerce</span>';
-                    setTimeout(() => { progress.style.display = 'none'; }, 3000);
-                });
+                        btn.classList.remove('btn-loading');
+                        btn.innerHTML = '<span class="btn-text">🔄 Update Catalog from WooCommerce</span>';
+                        setTimeout(() => { progress.style.display = 'none'; }, 3000);
+                        break;
+                }
+            };
+
+            eventSource.onerror = function(error) {
+                console.error("EventSource error:", error);
+                eventSource.close();
+                progressText.textContent = '✗ Connection error';
+                progressFill.style.animation = 'none';
+                progressFill.style.background = 'var(--danger)';
+                showToast('Connection error during update', 'error');
+                btn.classList.remove('btn-loading');
+                btn.innerHTML = '<span class="btn-text">🔄 Update Catalog from WooCommerce</span>';
+                setTimeout(() => { progress.style.display = 'none'; }, 3000);
+            };
         }
 
         function showToast(message, type) {
@@ -304,94 +360,80 @@
             setTimeout(() => toast.remove(), 3000);
         }
 
-        // Google Sign-In Success Handler
-        function onSignIn(googleUser) {
-            var profile = googleUser.getBasicProfile();
-            fetch('/google_login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id: profile.getId(),
-                    name: profile.getName(),
-                    email: profile.getEmail(),
-                    image_url: profile.getImageUrl(),
-                }),
-            })
-            .then(response => response.json())
-            .then(data => {
-                showToast('Welcome, ' + profile.getName() + '!', 'success');
-            })
-            .catch(error => console.error('Error:', error));
-        }
-
-        function signOut() {
-            var auth2 = gapi.auth2.getAuthInstance();
-            auth2.signOut().then(function () {
-                showToast('Signed out successfully', 'success');
-            });
-        }
     </script>
 </head>
 <body>
     <!-- Environment Indicator -->
     <div class="env-indicator {{ 'test' if billingo_env == 'test' else 'prod' }}">
         {% if billingo_env == 'test' %}
-            TESZT környezet
+            <span data-i18n="testEnv">TESZT környezet</span>
         {% else %}
-            Élő rendszer
+            <span data-i18n="prodEnv">Élő rendszer</span>
         {% endif %}
+    </div>
+
+    <!-- Language Toggle -->
+    <div class="lang-toggle">
+        <button class="lang-btn" data-lang="en" onclick="setLanguage('en')">EN</button>
+        <button class="lang-btn active" data-lang="hu" onclick="setLanguage('hu')">HU</button>
     </div>
 
     <div class="container">
         <div class="user-section">
-            <div class="g-signin2" data-onsuccess="onSignIn" data-theme="outline"></div>
-            <button onclick="signOut()" class="update-btn">Sign Out</button>
+            <span style="color: var(--gray-600); font-size: 0.9rem;">
+                <span data-i18n="loggedInAs">Logged in as</span> <strong>{{ current_user }}</strong>
+                {% if is_admin %}<span style="color: var(--danger); font-size: 0.75rem; margin-left: 4px;">(Admin)</span>{% endif %}
+            </span>
+            {% if is_admin %}
+            <a href="{{ url_for('manage_users') }}" class="update-btn" style="text-decoration: none;" data-i18n="manageUsers">Manage Users</a>
+            {% endif %}
+            <a href="{{ url_for('logout') }}" class="update-btn" style="text-decoration: none; background: var(--gray-200);" data-i18n="logout">Logout</a>
         </div>
 
         <div class="hero">
             <h1>Café Tiko POS</h1>
-            <p>Point of Sale System</p>
+            <p data-i18n="posSystem">Point of Sale System</p>
         </div>
 
-        <div class="section-title">Market Operations</div>
+        <div class="section-title" data-i18n="marketOperations">Market Operations</div>
         <div class="menu-grid">
             <a href="/prepare_market" class="menu-card primary">
                 <span class="icon">📦</span>
-                <span class="title">Prepare Market</span>
-                <span class="subtitle">Set up products & LOT numbers</span>
+                <span class="title" data-i18n="prepareMarket">Prepare Market</span>
+                <span class="subtitle" data-i18n="prepareMarketDesc">Set up products & LOT numbers</span>
             </a>
             <a href="/market_mode" class="menu-card secondary">
                 <span class="icon">🛒</span>
-                <span class="title">Market Mode</span>
-                <span class="subtitle">Start selling</span>
+                <span class="title" data-i18n="marketMode">Market Mode</span>
+                <span class="subtitle" data-i18n="marketModeDesc">Start selling</span>
             </a>
             <a href="/market_history" class="menu-card">
                 <span class="icon">📊</span>
-                <span class="title">Market History</span>
-                <span class="subtitle">View past sessions & analytics</span>
+                <span class="title" data-i18n="marketHistory">Market History</span>
+                <span class="subtitle" data-i18n="marketHistoryDesc">View past sessions & analytics</span>
             </a>
         </div>
 
-        <div class="section-title">Management</div>
+        <div class="section-title" data-i18n="management">Management</div>
         <div class="menu-grid">
             <a href="{{ url_for('manage_categories') }}" class="menu-card">
                 <span class="icon">📁</span>
-                <span class="title">Categories</span>
-                <span class="subtitle">Manage product categories</span>
+                <span class="title" data-i18n="categories">Categories</span>
+                <span class="subtitle" data-i18n="categoriesDesc">Manage product categories</span>
             </a>
             <a href="{{ url_for('manage_items') }}" class="menu-card">
                 <span class="icon">☕</span>
-                <span class="title">Products</span>
-                <span class="subtitle">View & edit products</span>
+                <span class="title" data-i18n="products">Products</span>
+                <span class="subtitle" data-i18n="productsDesc">View & edit products</span>
             </a>
             <a href="/create_receipt" class="menu-card">
                 <span class="icon">🧾</span>
-                <span class="title">Create Receipt</span>
-                <span class="subtitle">Manual receipt creation</span>
+                <span class="title" data-i18n="createReceipt">Create Receipt</span>
+                <span class="subtitle" data-i18n="createReceiptDesc">Manual receipt creation</span>
             </a>
         </div>
 
-        <div class="section-title">System</div>
+        <div class="section-title" data-i18n="system">System</div>
         <div class="catalog-update-container">
             <div class="language-selection" style="margin-bottom: 12px;">
                 <label style="font-size: 0.85rem; color: var(--gray-600); margin-bottom: 8px; display: block;">Select languages to download:</label>
@@ -516,5 +558,91 @@
             to { transform: rotate(360deg); }
         }
     </style>
+
+    <script>
+        // ==================== TRANSLATIONS ====================
+        let currentLang = localStorage.getItem('pos_language') || 'hu';
+
+        const translations = {
+            hu: {
+                testEnv: 'TESZT környezet',
+                prodEnv: 'Élő rendszer',
+                loggedInAs: 'Bejelentkezve mint',
+                manageUsers: 'Felhasználók kezelése',
+                logout: 'Kijelentkezés',
+                posSystem: 'Értékesítési rendszer',
+                marketOperations: 'Piaci műveletek',
+                prepareMarket: 'Piac előkészítés',
+                prepareMarketDesc: 'Termékek és LOT számok beállítása',
+                marketMode: 'Piac mód',
+                marketModeDesc: 'Értékesítés indítása',
+                marketHistory: 'Piaci előzmények',
+                marketHistoryDesc: 'Korábbi munkamenetek és statisztikák',
+                management: 'Kezelés',
+                categories: 'Kategóriák',
+                categoriesDesc: 'Termékkategóriák kezelése',
+                products: 'Termékek',
+                productsDesc: 'Termékek megtekintése és szerkesztése',
+                createReceipt: 'Számla létrehozása',
+                createReceiptDesc: 'Kézi számla létrehozás',
+                system: 'Rendszer'
+            },
+            en: {
+                testEnv: 'TEST Environment',
+                prodEnv: 'Live System',
+                loggedInAs: 'Logged in as',
+                manageUsers: 'Manage Users',
+                logout: 'Logout',
+                posSystem: 'Point of Sale System',
+                marketOperations: 'Market Operations',
+                prepareMarket: 'Prepare Market',
+                prepareMarketDesc: 'Set up products & LOT numbers',
+                marketMode: 'Market Mode',
+                marketModeDesc: 'Start selling',
+                marketHistory: 'Market History',
+                marketHistoryDesc: 'View past sessions & analytics',
+                management: 'Management',
+                categories: 'Categories',
+                categoriesDesc: 'Manage product categories',
+                products: 'Products',
+                productsDesc: 'View & edit products',
+                createReceipt: 'Create Receipt',
+                createReceiptDesc: 'Manual receipt creation',
+                system: 'System'
+            }
+        };
+
+        function setLanguage(lang) {
+            currentLang = lang;
+            localStorage.setItem('pos_language', lang);
+
+            // Update toggle buttons
+            document.querySelectorAll('.lang-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.lang === lang);
+            });
+
+            // Update all elements with data-i18n attribute
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.dataset.i18n;
+                if (translations[lang][key]) {
+                    el.textContent = translations[lang][key];
+                }
+            });
+
+            // Update placeholders
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                const key = el.dataset.i18nPlaceholder;
+                if (translations[lang][key]) {
+                    el.placeholder = translations[lang][key];
+                }
+            });
+        }
+
+        // Initialize language on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedLang = localStorage.getItem('pos_language') || 'hu';
+            setLanguage(savedLang);
+        });
+    </script>
 </body>
 </html>

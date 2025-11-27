@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Prepare Market - Café Tiko POS</title>
+    <link rel="icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-32x32.png" sizes="32x32">
+    <link rel="icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-192x192.png" sizes="192x192">
+    <link rel="apple-touch-icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-180x180.png">
+
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -350,6 +354,39 @@
             margin-top: 16px;
         }
 
+        /* Language toggle styles */
+        .lang-toggle {
+            position: fixed;
+            bottom: 20px;
+            right: 12px;
+            z-index: 1001;
+            display: flex;
+            gap: 4px;
+            background: white;
+            padding: 4px;
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+        }
+        .lang-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 16px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: transparent;
+            color: var(--gray-500);
+        }
+        .lang-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+        .lang-btn:hover:not(.active) {
+            background: var(--gray-100);
+            color: var(--gray-700);
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .columns {
@@ -412,38 +449,44 @@
     <!-- Environment Indicator -->
     <div class="env-indicator {{ 'test' if billingo_env == 'test' else 'prod' }}">
         {% if billingo_env == 'test' %}
-            TESZT környezet
+            <span data-i18n="testEnv">TESZT környezet</span>
         {% else %}
-            Élő rendszer
+            <span data-i18n="prodEnv">Élő rendszer</span>
         {% endif %}
+    </div>
+
+    <!-- Language Toggle -->
+    <div class="lang-toggle">
+        <button class="lang-btn" data-lang="en" onclick="setLanguage('en')">EN</button>
+        <button class="lang-btn active" data-lang="hu" onclick="setLanguage('hu')">HU</button>
     </div>
 
     <div class="container">
         <div class="page-title">
             <a href="/" class="back-link">←</a>
-            <h1>📦 Prepare Market</h1>
+            <h1 data-i18n="prepareMarketTitle">📦 Prepare Market</h1>
         </div>
 
         <!-- Session Header -->
         <div class="session-header {{ 'session-active' if active_session else 'session-inactive' }}">
             {% if active_session %}
                 <div>
-                    <strong>Active Session:</strong> {{ active_session[1] }}<br>
-                    <small>Created: {{ active_session[2] }}</small>
+                    <strong data-i18n="activeSession">Active Session:</strong> {{ active_session[1] }}<br>
+                    <small><span data-i18n="created">Created:</span> {{ active_session[2] }}</small>
                 </div>
                 <div>
-                    <button class="btn-success" onclick="location.href='/market_mode'">Go to Market Mode</button>
-                    <button class="btn-danger" onclick="closeSession()">Close Session</button>
+                    <button class="btn-success" onclick="location.href='/market_mode'" data-i18n="goToMarketMode">Go to Market Mode</button>
+                    <button class="btn-danger" onclick="closeSession()" data-i18n="closeSession">Close Session</button>
                 </div>
             {% else %}
                 <div>
-                    <strong>No active session</strong><br>
-                    <small>Create a new session to start preparing for the market</small>
+                    <strong data-i18n="noActiveSession">No active session</strong><br>
+                    <small data-i18n="createSessionHint">Create a new session to start preparing for the market</small>
                 </div>
                 <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                    <input type="text" id="sessionName" placeholder="Session name (e.g., Saturday Market)" style="padding: 10px; width: 250px;">
-                    <input type="number" id="initialCash" placeholder="Initial cash (HUF)" style="padding: 10px; width: 150px;" min="0" step="100">
-                    <button class="btn-success" onclick="createSession()">Create Session</button>
+                    <input type="text" id="sessionName" data-i18n-placeholder="sessionNamePlaceholder" placeholder="Session name (e.g., Saturday Market)" style="padding: 10px; width: 250px;">
+                    <input type="number" id="initialCash" data-i18n-placeholder="initialCashPlaceholder" placeholder="Initial cash (HUF)" style="padding: 10px; width: 150px;" min="0" step="100">
+                    <button class="btn-success" onclick="createSession()" data-i18n="createSession">Create Session</button>
                 </div>
             {% endif %}
         </div>
@@ -453,12 +496,12 @@
             <!-- Left Column: Add Items -->
             <div class="left-column">
                 <div class="add-item-form">
-                    <h3>Add Product to Market</h3>
+                    <h3 data-i18n="addProductToMarket">Add Product to Market</h3>
 
                     <div class="filter-section">
-                        <label for="categoryFilter">Filter by Category:</label>
+                        <label for="categoryFilter" data-i18n="filterByCategory">Filter by Category:</label>
                         <select id="categoryFilter" onchange="filterItems()">
-                            <option value="all">All Categories</option>
+                            <option value="all" data-i18n="allCategories">All Categories</option>
                             {% for category in categories %}
                                 {% if not category[2] %}
                                 <option value="{{ category[0] }}">{{ category[1] }}</option>
@@ -467,7 +510,7 @@
                         </select>
                     </div>
 
-                    <label for="itemSelect">Select Product:</label>
+                    <label for="itemSelect" data-i18n="selectProduct">Select Product:</label>
                     <div id="itemSelect">
                         {% for item in items %}
                         <div class="item-option" data-id="{{ item[0] }}" data-name="{{ item[1] }}" data-price="{{ item[2] }}" data-category="{{ item[4] }}" onclick="selectItem(this)">
@@ -476,27 +519,27 @@
                         {% endfor %}
                     </div>
 
-                    <label for="lotNumber">LOT Number:</label>
-                    <input type="text" id="lotNumber" placeholder="e.g., 2025-11-27" required>
+                    <label for="lotNumber" data-i18n="lotNumber">LOT Number:</label>
+                    <input type="text" id="lotNumber" data-i18n-placeholder="lotNumberPlaceholder" placeholder="e.g., 2025-11-27" required>
 
-                    <label for="quantity">Quantity:</label>
+                    <label for="quantity" data-i18n="quantity">Quantity:</label>
                     <input type="number" id="quantity" value="1" min="1" required>
 
-                    <button onclick="addItem()" id="addItemBtn" disabled>Add to Market List</button>
+                    <button onclick="addItem()" id="addItemBtn" disabled data-i18n="addToMarketList">Add to Market List</button>
                 </div>
             </div>
 
             <!-- Right Column: Session Items -->
             <div class="right-column">
-                <h3>Products for Market ({{ session_items|length }} entries)</h3>
+                <h3><span data-i18n="productsForMarket">Products for Market</span> ({{ session_items|length }} <span data-i18n="entries">entries</span>)</h3>
                 <table class="session-items-table">
                     <thead>
                         <tr>
-                            <th>Product</th>
-                            <th>LOT Number</th>
-                            <th>Qty Prepared</th>
-                            <th>Qty Remaining</th>
-                            <th>Action</th>
+                            <th data-i18n="product">Product</th>
+                            <th data-i18n="lotNumber">LOT Number</th>
+                            <th data-i18n="qtyPrepared">Qty Prepared</th>
+                            <th data-i18n="qtyRemaining">Qty Remaining</th>
+                            <th data-i18n="action">Action</th>
                         </tr>
                     </thead>
                     <tbody id="sessionItemsBody">
@@ -525,7 +568,7 @@
         {% endif %}
 
         <div style="margin-top: 20px;">
-            <button onclick="location.href='{{ url_for('main_menu') }}'">Back to Main Menu</button>
+            <button onclick="location.href='{{ url_for('main_menu') }}'" data-i18n="backToMainMenu">Back to Main Menu</button>
         </div>
     </div>
 
@@ -717,6 +760,104 @@
                 }
             });
         }
+
+        // ==================== TRANSLATIONS ====================
+        let currentLang = localStorage.getItem('pos_language') || 'hu';
+
+        const translations = {
+            hu: {
+                testEnv: 'TESZT környezet',
+                prodEnv: 'Élő rendszer',
+                prepareMarketTitle: '📦 Piac előkészítés',
+                activeSession: 'Aktív munkamenet:',
+                created: 'Létrehozva:',
+                goToMarketMode: 'Piac módba',
+                closeSession: 'Munkamenet lezárása',
+                noActiveSession: 'Nincs aktív munkamenet',
+                createSessionHint: 'Hozz létre új munkamenetet a piac előkészítéséhez',
+                sessionNamePlaceholder: 'Munkamenet neve (pl. Szombati piac)',
+                initialCashPlaceholder: 'Kezdő készpénz (HUF)',
+                createSession: 'Munkamenet létrehozása',
+                addProductToMarket: 'Termék hozzáadása a piachoz',
+                filterByCategory: 'Szűrés kategória szerint:',
+                allCategories: 'Összes kategória',
+                selectProduct: 'Termék kiválasztása:',
+                lotNumber: 'LOT szám',
+                lotNumberPlaceholder: 'pl. 2025-11-27',
+                quantity: 'Mennyiség',
+                addToMarketList: 'Hozzáadás a listához',
+                productsForMarket: 'Termékek a piacra',
+                entries: 'tétel',
+                product: 'Termék',
+                qtyPrepared: 'Előkészített',
+                qtyRemaining: 'Maradt',
+                action: 'Művelet',
+                noItemsAdded: 'Még nincs hozzáadott termék',
+                backToMainMenu: 'Vissza a főmenübe'
+            },
+            en: {
+                testEnv: 'TEST Environment',
+                prodEnv: 'Live System',
+                prepareMarketTitle: '📦 Prepare Market',
+                activeSession: 'Active Session:',
+                created: 'Created:',
+                goToMarketMode: 'Go to Market Mode',
+                closeSession: 'Close Session',
+                noActiveSession: 'No active session',
+                createSessionHint: 'Create a new session to start preparing for the market',
+                sessionNamePlaceholder: 'Session name (e.g., Saturday Market)',
+                initialCashPlaceholder: 'Initial cash (HUF)',
+                createSession: 'Create Session',
+                addProductToMarket: 'Add Product to Market',
+                filterByCategory: 'Filter by Category:',
+                allCategories: 'All Categories',
+                selectProduct: 'Select Product:',
+                lotNumber: 'LOT Number',
+                lotNumberPlaceholder: 'e.g., 2025-11-27',
+                quantity: 'Quantity',
+                addToMarketList: 'Add to Market List',
+                productsForMarket: 'Products for Market',
+                entries: 'entries',
+                product: 'Product',
+                qtyPrepared: 'Qty Prepared',
+                qtyRemaining: 'Qty Remaining',
+                action: 'Action',
+                noItemsAdded: 'No items added yet',
+                backToMainMenu: 'Back to Main Menu'
+            }
+        };
+
+        function setLanguage(lang) {
+            currentLang = lang;
+            localStorage.setItem('pos_language', lang);
+
+            // Update toggle buttons
+            document.querySelectorAll('.lang-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.lang === lang);
+            });
+
+            // Update all elements with data-i18n attribute
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.dataset.i18n;
+                if (translations[lang][key]) {
+                    el.textContent = translations[lang][key];
+                }
+            });
+
+            // Update placeholders
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                const key = el.dataset.i18nPlaceholder;
+                if (translations[lang][key]) {
+                    el.placeholder = translations[lang][key];
+                }
+            });
+        }
+
+        // Initialize language on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedLang = localStorage.getItem('pos_language') || 'hu';
+            setLanguage(savedLang);
+        });
     </script>
 </body>
 </html>

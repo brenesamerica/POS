@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Categories</title>
+    <link rel="icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-32x32.png" sizes="32x32">
+    <link rel="icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-192x192.png" sizes="192x192">
+    <link rel="apple-touch-icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-180x180.png">
+
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -137,23 +142,136 @@
             background: var(--primary);
             color: white;
         }
+
+        /* Language toggle styles */
+        .lang-toggle {
+            position: fixed;
+            bottom: 20px;
+            right: 12px;
+            z-index: 1001;
+            display: flex;
+            gap: 4px;
+            background: white;
+            padding: 4px;
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+        }
+        .lang-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 16px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: transparent;
+            color: var(--gray-500);
+        }
+        .lang-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+        .lang-btn:hover:not(.active) {
+            background: var(--gray-100);
+            color: var(--gray-700);
+        }
+
+        /* Mobile Responsive Styles */
+        @media (max-width: 768px) {
+            body {
+                padding-top: 90px;
+            }
+            .top-nav {
+                padding: 10px 12px;
+            }
+            .top-nav .nav-title {
+                font-size: 1rem;
+            }
+            .top-nav .nav-btn {
+                padding: 8px 12px;
+                font-size: 0.8rem;
+            }
+            .container {
+                padding: 12px;
+                margin: 8px;
+            }
+            .filters-bar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .filters-bar input[type="text"] {
+                width: 100%;
+                font-size: 16px;
+                padding: 14px;
+            }
+            .sort-btn {
+                width: 100%;
+                justify-content: center;
+                font-size: 16px;
+                padding: 14px;
+            }
+
+            /* Table mobile styles */
+            table {
+                font-size: 1rem;
+            }
+            table th {
+                font-size: 0.85rem;
+                padding: 12px 10px;
+            }
+            table td {
+                font-size: 1rem;
+                padding: 14px 10px;
+            }
+            table button {
+                padding: 10px 14px;
+                font-size: 0.9rem;
+                min-height: 44px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .top-nav {
+                flex-direction: column;
+                gap: 8px;
+                padding: 10px;
+            }
+            .top-nav .nav-actions {
+                width: 100%;
+                justify-content: space-between;
+            }
+            .top-nav .nav-btn {
+                flex: 1;
+                justify-content: center;
+            }
+            table td {
+                font-size: 1rem;
+                padding: 12px 8px;
+            }
+        }
     </style>
 </head>
 <body>
     <!-- Environment Indicator -->
     <div class="env-indicator {{ 'test' if billingo_env == 'test' else 'prod' }}">
         {% if billingo_env == 'test' %}
-            TESZT környezet
+            <span data-i18n="testEnv">TESZT környezet</span>
         {% else %}
-            Élő rendszer
+            <span data-i18n="prodEnv">Élő rendszer</span>
         {% endif %}
     </div>
 
+    <!-- Language Toggle -->
+    <div class="lang-toggle">
+        <button class="lang-btn" data-lang="en" onclick="setLanguage('en')">EN</button>
+        <button class="lang-btn active" data-lang="hu" onclick="setLanguage('hu')">HU</button>
+    </div>
+
     <nav class="top-nav">
-        <span class="nav-title">📁 Manage Categories</span>
+        <span class="nav-title" data-i18n="manageCategoriesTitle">📁 Manage Categories</span>
         <div class="nav-actions">
-            <a href="/add_category" class="nav-btn primary">+ Add Category</a>
-            <a href="{{ url_for('main_menu') }}" class="nav-btn secondary">← Back to Menu</a>
+            <a href="/add_category" class="nav-btn primary" data-i18n="addCategory">+ Add Category</a>
+            <a href="{{ url_for('main_menu') }}" class="nav-btn secondary" data-i18n="backToMenu">← Back to Menu</a>
         </div>
     </nav>
 
@@ -260,6 +378,56 @@
                     .catch(error => console.error("Error:", error));
             }
         }
+
+        // ==================== TRANSLATIONS ====================
+        let currentLang = localStorage.getItem('pos_language') || 'hu';
+
+        const translations = {
+            hu: {
+                testEnv: 'TESZT környezet',
+                prodEnv: 'Élő rendszer',
+                manageCategoriesTitle: '📁 Kategóriák kezelése',
+                addCategory: '+ Kategória hozzáadása',
+                backToMenu: '← Vissza a menübe',
+                searchCategories: '🔍 Kategóriák keresése...'
+            },
+            en: {
+                testEnv: 'TEST Environment',
+                prodEnv: 'Live System',
+                manageCategoriesTitle: '📁 Manage Categories',
+                addCategory: '+ Add Category',
+                backToMenu: '← Back to Menu',
+                searchCategories: '🔍 Search categories...'
+            }
+        };
+
+        function setLanguage(lang) {
+            currentLang = lang;
+            localStorage.setItem('pos_language', lang);
+
+            document.querySelectorAll('.lang-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.lang === lang);
+            });
+
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.dataset.i18n;
+                if (translations[lang][key]) {
+                    el.textContent = translations[lang][key];
+                }
+            });
+
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                const key = el.dataset.i18nPlaceholder;
+                if (translations[lang][key]) {
+                    el.placeholder = translations[lang][key];
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedLang = localStorage.getItem('pos_language') || 'hu';
+            setLanguage(savedLang);
+        });
     </script>
 </body>
 </html>
