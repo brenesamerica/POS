@@ -4,6 +4,7 @@ import requests
 import logging
 import io
 import os
+import json
 
 
 app = Flask(__name__)
@@ -72,6 +73,7 @@ def init_db():
                 category_id INTEGER,
                 image_url TEXT,
                 description TEXT,
+                attributes TEXT,
                 FOREIGN KEY (category_id) REFERENCES categories (id)
             )
         """)
@@ -140,14 +142,19 @@ def wc_api_request(endpoint, params=None):
         logging.error(f"WooCommerce API error: {e}")
         return None
 
-def fetch_products():
+def fetch_products(lang=None):
     """Fetch all products from WooCommerce, including variations"""
     products = []
     page = 1
     per_page = 100
 
     while True:
-        data = wc_api_request('products', {'page': page, 'per_page': per_page, 'status': 'publish'})
+        params = {'page': page, 'per_page': per_page, 'status': 'publish'}
+        # Add language parameter if specified (for WPML compatibility)
+        if lang:
+            params['lang'] = lang
+
+        data = wc_api_request('products', params)
 
         if not data:
             break
@@ -160,7 +167,7 @@ def fetch_products():
 
             if product_type == 'variable':
                 # Fetch variations for variable products
-                variations = fetch_product_variations(product)
+                variations = fetch_product_variations(product, lang)
                 products.extend(variations)
                 logging.debug(f"Fetched {len(variations)} variations for: {product.get('name')}")
             else:
@@ -175,10 +182,10 @@ def fetch_products():
 
         page += 1
 
-    logging.info(f"Fetched {len(products)} products from WooCommerce")
+    logging.info(f"Fetched {len(products)} products from WooCommerce (lang={lang})")
     return products
 
-def fetch_product_variations(parent_product):
+def fetch_product_variations(parent_product, lang=None):
     """Fetch all variations of a variable product"""
     variations = []
     parent_id = parent_product.get('id')
@@ -186,12 +193,16 @@ def fetch_product_variations(parent_product):
     parent_categories = parent_product.get('categories', [])
     parent_images = parent_product.get('images', [])
     parent_description = parent_product.get('short_description', '') or parent_product.get('description', '')
+    parent_attributes = parent_product.get('attributes', [])
 
     page = 1
     per_page = 100
 
     while True:
-        data = wc_api_request(f'products/{parent_id}/variations', {'page': page, 'per_page': per_page})
+        params = {'page': page, 'per_page': per_page}
+        if lang:
+            params['lang'] = lang
+        data = wc_api_request(f'products/{parent_id}/variations', params)
 
         if not data:
             break
@@ -200,7 +211,7 @@ def fetch_product_variations(parent_product):
             break
 
         for variation in data:
-            variation_details = parse_wc_variation(variation, parent_name, parent_categories, parent_images, parent_description)
+            variation_details = parse_wc_variation(variation, parent_name, parent_categories, parent_images, parent_description, parent_attributes)
             if variation_details:
                 variations.append(variation_details)
 
@@ -211,7 +222,7 @@ def fetch_product_variations(parent_product):
 
     return variations
 
-def parse_wc_variation(variation, parent_name, parent_categories, parent_images, parent_description):
+def parse_wc_variation(variation, parent_name, parent_categories, parent_images, parent_description, parent_attributes=None):
     """Parse a WooCommerce variation into our format"""
     try:
         if variation.get('status') != 'publish':
@@ -249,17 +260,41 @@ def parse_wc_variation(variation, parent_name, parent_categories, parent_images,
         if not name or price <= 0:
             return None
 
+        # Extract product attributes (Origin, Roast, Process, etc.) from parent
+        product_attrs = extract_product_attributes(parent_attributes or [])
+
         return {
             'id': variation_id,
             'name': name,
             'price': price,
             'category_id': category_id,
             'description': parent_description,
-            'image_url': image_url
+            'image_url': image_url,
+            'attributes': product_attrs
         }
     except Exception as e:
         logging.error(f"Error parsing variation: {e}")
         return None
+
+def extract_product_attributes(wc_attributes):
+    """Extract relevant product attributes (Origin, Roast, Process, etc.)"""
+    attrs = {}
+    # List of attribute names we're interested in (case-insensitive matching)
+    interesting_attrs = ['origin', 'roast', 'process', 'variety', 'altitude', 'region', 'farm', 'producer']
+
+    for attr in wc_attributes:
+        attr_name = attr.get('name', '').lower()
+        for target in interesting_attrs:
+            if target in attr_name:
+                # Get the options/values
+                options = attr.get('options', [])
+                if options:
+                    attrs[target.capitalize()] = ', '.join(options) if isinstance(options, list) else str(options)
+                elif attr.get('option'):
+                    attrs[target.capitalize()] = attr.get('option')
+                break
+
+    return attrs
 
 def parse_wc_product(product):
     """Parse a WooCommerce simple product into our format"""
@@ -292,6 +327,9 @@ def parse_wc_product(product):
         images = product.get('images', [])
         image_url = images[0]['src'] if images else ''
 
+        # Extract product attributes (Origin, Roast, Process, etc.)
+        product_attrs = extract_product_attributes(product.get('attributes', []))
+
         if not name or price <= 0:
             logging.debug(f"Missing name or invalid price for product {product_id}. Skipping.")
             return None
@@ -302,20 +340,24 @@ def parse_wc_product(product):
             'price': price,
             'category_id': category_id,
             'description': description,
-            'image_url': image_url
+            'image_url': image_url,
+            'attributes': product_attrs
         }
     except Exception as e:
         logging.error(f"Error parsing product: {e}")
         return None
 
-def fetch_categories_with_products():
+def fetch_categories_with_products(lang=None):
     """Fetch all categories from WooCommerce that have products"""
     categories = []
     page = 1
     per_page = 100
 
     while True:
-        data = wc_api_request('products/categories', {'page': page, 'per_page': per_page, 'hide_empty': True})
+        params = {'page': page, 'per_page': per_page, 'hide_empty': True}
+        if lang:
+            params['lang'] = lang
+        data = wc_api_request('products/categories', params)
 
         if not data:
             break
@@ -335,7 +377,7 @@ def fetch_categories_with_products():
 
         page += 1
 
-    logging.info(f"Fetched {len(categories)} categories from WooCommerce")
+    logging.info(f"Fetched {len(categories)} categories from WooCommerce (lang={lang})")
     return categories
 
 @app.route('/google_login', methods=['POST'])
@@ -393,15 +435,66 @@ def logout():
 @app.route('/update_catalog', methods=['POST'])
 def update_catalog_route():
     try:
-        update_catalog()
-        return jsonify({"status": "success", "message": "Catalog updated successfully"})
+        # Get languages from request (default to HU only)
+        data = request.get_json() or {}
+        languages = data.get('languages', ['hu'])
+
+        # Validate languages
+        valid_languages = ['hu', 'en']
+        languages = [lang for lang in languages if lang in valid_languages]
+        if not languages:
+            languages = ['hu']
+
+        result = update_catalog(languages)
+        return jsonify({
+            "status": "success",
+            "message": "Catalog updated successfully",
+            "summary": result
+        })
     except Exception as e:
         logging.error("Error updating catalog: %s", e)
         return jsonify({"status": "error", "message": str(e)}), 500
 
-def update_catalog():
-    products = fetch_products()
-    categories = fetch_categories_with_products()
+def update_catalog(languages=None):
+    """Update catalog from WooCommerce for specified languages"""
+    if languages is None:
+        languages = ['hu']
+
+    all_products = []
+    all_categories = []
+    summary = {
+        'languages': languages,
+        'categories_per_lang': {},
+        'products_per_lang': {},
+        'total_categories': 0,
+        'total_products': 0,
+        'products_with_attributes': 0
+    }
+
+    # Fetch products and categories for each language
+    for lang in languages:
+        products = fetch_products(lang)
+        categories = fetch_categories_with_products(lang)
+
+        summary['products_per_lang'][lang] = len(products)
+        summary['categories_per_lang'][lang] = len(categories)
+
+        all_products.extend(products)
+        all_categories.extend(categories)
+
+    # Deduplicate by ID (in case same product appears in multiple languages)
+    unique_products = {}
+    for product in all_products:
+        if product and product.get('id'):
+            unique_products[product['id']] = product
+
+    unique_categories = {}
+    for category in all_categories:
+        if category and category.get('id'):
+            unique_categories[category['id']] = category
+
+    products = list(unique_products.values())
+    categories = list(unique_categories.values())
 
     with sqlite3.connect('pos.db') as conn:
         cursor = conn.cursor()
@@ -417,24 +510,42 @@ def update_catalog():
                 active_category_ids.add(product['category_id'])
 
         # Insert only categories that have active products
+        categories_inserted = 0
         for category in categories:
             if category['id'] in active_category_ids:
                 cursor.execute("INSERT INTO categories (id, name) VALUES (?, ?)", (category['id'], category['name']))
+                categories_inserted += 1
                 logging.debug(f"Inserted category: {category}")
             else:
                 logging.debug(f"Skipped category (no active products): {category}")
 
         # Insert products
+        products_inserted = 0
+        products_with_attrs = 0
         for product in products:
             if product:  # Only insert if product details are valid
+                # Serialize attributes to JSON
+                attrs_json = json.dumps(product.get('attributes', {})) if product.get('attributes') else None
+                if product.get('attributes'):
+                    products_with_attrs += 1
+
                 cursor.execute("""
-                    INSERT INTO items (id, name, price, vat, category_id, image_url, description)
-                    VALUES (?, ?, ?, '27%', ?, ?, ?)
-                """, (product['id'], product['name'], product['price'], product['category_id'], product['image_url'], product['description']))
-                logging.debug(f"Inserted item: {product}")
+                    INSERT INTO items (id, name, price, vat, category_id, image_url, description, attributes)
+                    VALUES (?, ?, ?, '27%', ?, ?, ?, ?)
+                """, (product['id'], product['name'], product['price'], product['category_id'],
+                      product['image_url'], product['description'], attrs_json))
+                products_inserted += 1
+                logging.debug(f"Inserted item: {product['name']}")
 
         conn.commit()
-        logging.info(f"Catalog updated: {len(active_category_ids)} categories, {len(products)} products")
+
+        summary['total_categories'] = categories_inserted
+        summary['total_products'] = products_inserted
+        summary['products_with_attributes'] = products_with_attrs
+
+        logging.info(f"Catalog updated: {categories_inserted} categories, {products_inserted} products (langs: {languages})")
+
+    return summary
 
 @app.route('/verify_data', methods=['GET'])
 def verify_data():
@@ -1036,4 +1147,6 @@ def market_session_detail(session_id):
                           summary=summary)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # debug=True for local development, set to False for production/remote access
+    debug_mode = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
+    app.run(host='0.0.0.0', port=5000, debug=debug_mode)

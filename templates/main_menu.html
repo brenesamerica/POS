@@ -219,13 +219,27 @@
             const btn = document.getElementById('updateCatalogBtn');
             const progress = document.getElementById('updateProgress');
             const progressText = progress.querySelector('.progress-text');
+            const summaryDiv = document.getElementById('updateSummary');
+
+            // Get selected languages
+            const languages = [];
+            if (document.getElementById('langHU').checked) languages.push('hu');
+            if (document.getElementById('langEN').checked) languages.push('en');
+
+            if (languages.length === 0) {
+                showToast('Please select at least one language', 'error');
+                return;
+            }
 
             btn.classList.add('btn-loading');
             btn.innerHTML = '<span class="spinner"></span> Updating...';
             progress.style.display = 'block';
+            summaryDiv.style.display = 'none';
 
             fetch('/update_catalog', {
-                method: 'POST'
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ languages: languages })
             })
                 .then(response => response.json())
                 .then(data => {
@@ -234,6 +248,32 @@
                         progress.querySelector('.progress-fill').style.animation = 'none';
                         progress.querySelector('.progress-fill').style.width = '100%';
                         progress.querySelector('.progress-fill').style.background = 'var(--success)';
+
+                        // Show summary
+                        if (data.summary) {
+                            const s = data.summary;
+                            let summaryHtml = `
+                                <div class="summary-title">📊 Update Summary</div>
+                                <div class="summary-stats">
+                                    <div class="summary-stat">
+                                        <span class="stat-value">${s.total_categories}</span>
+                                        <span class="stat-label">Categories</span>
+                                    </div>
+                                    <div class="summary-stat">
+                                        <span class="stat-value">${s.total_products}</span>
+                                        <span class="stat-label">Products</span>
+                                    </div>
+                                    <div class="summary-stat">
+                                        <span class="stat-value">${s.products_with_attributes}</span>
+                                        <span class="stat-label">With Attributes</span>
+                                    </div>
+                                </div>
+                                <div class="summary-languages">Languages: ${s.languages.map(l => l.toUpperCase()).join(', ')}</div>
+                            `;
+                            summaryDiv.innerHTML = summaryHtml;
+                            summaryDiv.style.display = 'block';
+                        }
+
                         showToast('Catalog updated successfully!', 'success');
                     } else {
                         progressText.textContent = '✗ Failed: ' + data.message;
@@ -353,6 +393,19 @@
 
         <div class="section-title">System</div>
         <div class="catalog-update-container">
+            <div class="language-selection" style="margin-bottom: 12px;">
+                <label style="font-size: 0.85rem; color: var(--gray-600); margin-bottom: 8px; display: block;">Select languages to download:</label>
+                <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; margin: 0;">
+                        <input type="checkbox" id="langHU" value="hu" checked style="width: auto; margin: 0;">
+                        <span>🇭🇺 Hungarian (HU)</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; margin: 0;">
+                        <input type="checkbox" id="langEN" value="en" style="width: auto; margin: 0;">
+                        <span>🇬🇧 English (EN)</span>
+                    </label>
+                </div>
+            </div>
             <button onclick="fetchCatalogUpdate()" id="updateCatalogBtn" class="update-btn" style="width: 100%; margin-top: 10px;">
                 <span class="btn-text">🔄 Update Catalog from WooCommerce</span>
             </button>
@@ -362,12 +415,57 @@
                 </div>
                 <p class="progress-text">Fetching products from WooCommerce...</p>
             </div>
+            <div id="updateSummary" class="update-summary" style="display: none;"></div>
         </div>
     </div>
 
     <style>
         .catalog-update-container {
             position: relative;
+        }
+        .update-summary {
+            margin-top: 16px;
+            padding: 20px;
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(99, 102, 241, 0.1) 100%);
+            border-radius: var(--radius);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+        .summary-title {
+            font-weight: 600;
+            font-size: 1rem;
+            color: var(--gray-800);
+            margin-bottom: 12px;
+        }
+        .summary-stats {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .summary-stat {
+            text-align: center;
+            padding: 10px 20px;
+            background: white;
+            border-radius: var(--radius-sm);
+            box-shadow: var(--shadow-sm);
+        }
+        .summary-stat .stat-value {
+            display: block;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--success);
+        }
+        .summary-stat .stat-label {
+            font-size: 0.75rem;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .summary-languages {
+            margin-top: 12px;
+            font-size: 0.85rem;
+            color: var(--gray-600);
+            text-align: center;
         }
         .progress-container {
             margin-top: 16px;
