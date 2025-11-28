@@ -1,0 +1,24 @@
+[Unit]
+Description=Café Tiko POS System
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/pos
+Environment="PATH=/home/pi/pos/venv/bin"
+EnvironmentFile=/home/pi/pos/.env
+ExecStart=/home/pi/pos/venv/bin/gunicorn --bind 0.0.0.0:5000 --workers 2 --threads 4 --timeout 120 app:app
+Restart=always
+RestartSec=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

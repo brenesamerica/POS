@@ -1878,7 +1878,7 @@
                 : '';
 
             const clickHandler = product.is500gVirtual
-                ? `select500gItem(${product.itemId}, '${product.name.replace(/'/g, "\\'")}', ${product.price}, '${product.vat}', ${product.source250gItemId}, '${product.source250gName.replace(/'/g, "\\'")}')`
+                ? `select500gItem(${product.itemId}, '${product.name.replace(/'/g, "\\'")}', ${product.price}, '${product.vat}', ${product.source250gItemId}, '${product.source250gName.replace(/'/g, "\\'")}', '${(product.image || '').replace(/'/g, "\\'")}')`
                 : `selectPreparedItem(${product.itemId}, '${product.name.replace(/'/g, "\\'")}', ${product.price}, '${product.vat}')`;
 
             return `
@@ -1971,7 +1971,7 @@
         }
 
         // 500g virtual product selection
-        function select500gItem(itemId500g, name500g, price500g, vat500g, source250gItemId, source250gName) {
+        function select500gItem(itemId500g, name500g, price500g, vat500g, source250gItemId, source250gName, image500g) {
             const lots250g = marketItemsData[source250gItemId];
             if (!lots250g || lots250g.length === 0) {
                 showToast(t('noStock'), 'error');
@@ -1995,7 +1995,8 @@
                 vat: vat500g,
                 source250gItemId: source250gItemId,
                 source250gName: source250gName,
-                availableLots: availableLots
+                availableLots: availableLots,
+                image: image500g || ''
             };
 
             // If only one LOT available, auto-select it for both bags
@@ -2085,6 +2086,7 @@
                 isPrepared: true,
                 is500gVirtual: true,
                 discount: 0,
+                image: current500gItem.image || '',
                 // Track which 250g lots to deduct from
                 source250gLots: [
                     { marketSessionItemId: lot1.marketSessionItemId, lotNumber: lot1.lotNumber },
@@ -2131,7 +2133,8 @@
                     lotNumber: lot.lotNumber,
                     maxQuantity: lot.remaining,
                     isPrepared: true,
-                    discount: 0
+                    discount: 0,
+                    image: lot.image || ''
                 });
             }
 
@@ -2170,6 +2173,10 @@
             // Build the display name with milk type if applicable
             const displayName = milkType ? `${name} (${milkType})` : name;
 
+            // Find the coffee item to get its image
+            const coffeeItem = coffeeItemsData.find(item => item.id === id);
+            const itemImage = coffeeItem ? coffeeItem.image : '';
+
             // For milk-based drinks, we need to match by base name AND milk type
             const existingIndex = selectedItems.findIndex(
                 item => !item.isPrepared && item.itemId === id && item.milkType === milkType
@@ -2188,7 +2195,8 @@
                     lotNumber: '',
                     isPrepared: false,
                     discount: 0,
-                    milkType: milkType
+                    milkType: milkType,
+                    image: itemImage
                 });
             }
 
@@ -2314,7 +2322,8 @@
                 price: item.price,
                 quantity: item.quantity,
                 discount: item.discount || 0,
-                lotNumber: item.lotNumber || ''
+                lotNumber: item.lotNumber || '',
+                image: item.image || ''
             }));
 
             const subtotalAfterItemDiscounts = selectedItems.reduce((sum, item) => {

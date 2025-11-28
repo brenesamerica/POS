@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Display - Cafe Tiko</title>
+    <link rel="icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-32x32.png" sizes="32x32">
+    <link rel="icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-192x192.png" sizes="192x192">
+    <link rel="apple-touch-icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-180x180.png">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: white;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: rgba(255,255,255,0.05);
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        .user-badge {
+            background: rgba(255,255,255,0.1);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .user-badge .dot {
+            width: 8px;
+            height: 8px;
+            background: var(--success);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 30px;
+            max-width: 800px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .status-message {
+            text-align: center;
+            padding: 40px 20px;
+            color: rgba(255,255,255,0.5);
+            font-size: 1.2rem;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .status-message.completed {
+            color: var(--success);
+        }
+        .status-message .icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            display: block;
+        }
+        .status-message .waiting-logo {
+            max-height: 200px;
+            margin-bottom: 30px;
+            animation: float 3s ease-in-out infinite;
+        }
+        .status-message .tagline {
+            font-size: 1.5rem;
+            color: rgba(255,255,255,0.7);
+            font-style: italic;
+            margin-top: 10px;
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .items-container {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+
+        .item-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            margin-bottom: 10px;
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        .item-info {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .item-image {
+            width: 50px;
+            height: 50px;
+            border-radius: 8px;
+            object-fit: cover;
+            background: rgba(255,255,255,0.1);
+            flex-shrink: 0;
+        }
+        .item-text {
+            flex: 1;
+        }
+        .item-name {
+            font-weight: 600;
+            font-size: 1.1rem;
+            margin-bottom: 4px;
+        }
+        .item-details {
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.6);
+        }
+        .item-lot {
+            font-size: 0.75rem;
+            color: rgba(255,255,255,0.4);
+            margin-top: 4px;
+        }
+        .item-qty {
+            background: rgba(255,255,255,0.1);
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-weight: 600;
+            margin: 0 16px;
+        }
+        .item-price {
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: var(--primary);
+            min-width: 100px;
+            text-align: right;
+        }
+        .item-discount {
+            color: var(--success);
+            font-size: 0.8rem;
+        }
+
+        .totals-section {
+            background: rgba(255,255,255,0.08);
+            border-radius: 16px;
+            padding: 24px;
+            margin-top: auto;
+        }
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+        }
+        .total-row.discount {
+            color: var(--success);
+            font-size: 0.95rem;
+        }
+        .total-row.grand-total {
+            border-top: 2px solid rgba(255,255,255,0.2);
+            margin-top: 12px;
+            padding-top: 16px;
+        }
+        .total-row.grand-total .label {
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+        .total-row.grand-total .value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .item-count {
+            text-align: center;
+            color: rgba(255,255,255,0.5);
+            font-size: 0.9rem;
+            margin-bottom: 16px;
+        }
+
+        /* Thank you animation */
+        .thank-you {
+            text-align: center;
+            padding: 60px;
+        }
+        .thank-you .checkmark {
+            width: 80px;
+            height: 80px;
+            background: var(--success);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            margin: 0 auto 24px;
+            animation: scaleIn 0.5s ease-out;
+        }
+        @keyframes scaleIn {
+            from { transform: scale(0); }
+            to { transform: scale(1); }
+        }
+        .thank-you h2 {
+            font-size: 2rem;
+            margin-bottom: 12px;
+        }
+        .thank-you p {
+            color: rgba(255,255,255,0.6);
+            font-size: 1.1rem;
+        }
+
+        /* Mobile responsive */
+        @media (max-width: 600px) {
+            .header {
+                padding: 16px 20px;
+            }
+            .logo {
+                font-size: 1.2rem;
+            }
+            .main-content {
+                padding: 20px;
+            }
+            .item-row {
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+            .item-info {
+                width: 100%;
+            }
+            .item-qty {
+                margin: 0;
+            }
+            .item-price {
+                min-width: auto;
+            }
+            .total-row.grand-total .value {
+                font-size: 1.6rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo"><img src="{{ url_for('static', filename='images/fulllogo_transparent_nobuffer.png') }}" alt="Café Tiko" style="height: 40px;"></div>
+        <div class="user-badge">
+            <span class="dot"></span>
+            <span>{{ username }}</span>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div id="statusMessage" class="status-message">
+            <img src="{{ url_for('static', filename='images/fulllogo_transparent_nobuffer.png') }}" alt="Café Tiko" class="waiting-logo">
+            <div class="tagline">Készülünk valami finomat főzni neked...</div>
+        </div>
+
+        <div id="saleContent" style="display: none;">
+            <div class="item-count" id="itemCount">0 items</div>
+            <div class="items-container" id="itemsList"></div>
+            <div class="totals-section">
+                <div class="total-row" id="subtotalRow" style="display: none;">
+                    <span class="label">Subtotal</span>
+                    <span class="value" id="subtotal">0 Ft</span>
+                </div>
+                <div class="total-row discount" id="discountRow" style="display: none;">
+                    <span class="label">Discount</span>
+                    <span class="value" id="discountAmount">-0 Ft</span>
+                </div>
+                <div class="total-row grand-total">
+                    <span class="label">Total</span>
+                    <span class="value" id="grandTotal">0 Ft</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="thankYou" class="thank-you" style="display: none;">
+            <div class="checkmark">✓</div>
+            <h2>Thank You!</h2>
+            <p>Your purchase has been completed</p>
+        </div>
+    </div>
+
+    <script>
+        let currentStatus = 'empty';
+        let lastUpdateTime = 0;
+
+        function formatPrice(price) {
+            return Math.round(price).toLocaleString() + ' Ft';
+        }
+
+        function renderSale(data) {
+            const statusMessage = document.getElementById('statusMessage');
+            const saleContent = document.getElementById('saleContent');
+            const thankYou = document.getElementById('thankYou');
+
+            // Handle completed sale
+            if (data.status === 'completed') {
+                statusMessage.style.display = 'none';
+                saleContent.style.display = 'none';
+                thankYou.style.display = 'block';
+
+                // After 5 seconds, go back to waiting
+                setTimeout(() => {
+                    thankYou.style.display = 'none';
+                    statusMessage.style.display = 'flex';
+                    statusMessage.innerHTML = '<img src="{{ url_for('static', filename='images/fulllogo_transparent_nobuffer.png') }}" alt="Café Tiko" class="waiting-logo"><div class="tagline">Készülünk valami finomat főzni neked...</div>';
+                }, 5000);
+                return;
+            }
+
+            // Handle empty/cleared sale
+            if (!data.items || data.items.length === 0) {
+                statusMessage.style.display = 'flex';
+                saleContent.style.display = 'none';
+                thankYou.style.display = 'none';
+                statusMessage.innerHTML = '<img src="{{ url_for('static', filename='images/fulllogo_transparent_nobuffer.png') }}" alt="Café Tiko" class="waiting-logo"><div class="tagline">Készülünk valami finomat főzni neked...</div>';
+                return;
+            }
+
+            // Show active sale
+            statusMessage.style.display = 'none';
+            saleContent.style.display = 'block';
+            thankYou.style.display = 'none';
+
+            // Update item count
+            const totalItems = data.items.reduce((sum, item) => sum + (item.quantity || 1), 0);
+            document.getElementById('itemCount').textContent =
+                totalItems === 1 ? '1 item' : `${totalItems} items`;
+
+            // Render items
+            const itemsList = document.getElementById('itemsList');
+            itemsList.innerHTML = data.items.map(item => {
+                const itemTotal = (item.price || 0) * (item.quantity || 1);
+                const discountedTotal = itemTotal * (1 - (item.discount || 0) / 100);
+                const hasDiscount = item.discount && item.discount > 0;
+                const imageHtml = item.image ? `<img src="${item.image}" alt="${item.name}" class="item-image" onerror="this.style.display='none'">` : '';
+
+                return `
+                    <div class="item-row">
+                        <div class="item-info">
+                            ${imageHtml}
+                            <div class="item-text">
+                                <div class="item-name">${item.name}</div>
+                                <div class="item-details">${formatPrice(item.price)} each${hasDiscount ? ` <span class="item-discount">(-${item.discount}%)</span>` : ''}</div>
+                                ${item.lotNumber ? `<div class="item-lot">LOT: ${item.lotNumber}</div>` : ''}
+                            </div>
+                        </div>
+                        <div class="item-qty">×${item.quantity || 1}</div>
+                        <div class="item-price">${formatPrice(discountedTotal)}</div>
+                    </div>
+                `;
+            }).join('');
+
+            // Calculate totals
+            const subtotal = data.items.reduce((sum, item) => {
+                return sum + (item.price || 0) * (item.quantity || 1);
+            }, 0);
+
+            const afterItemDiscounts = data.items.reduce((sum, item) => {
+                const itemTotal = (item.price || 0) * (item.quantity || 1);
+                return sum + itemTotal * (1 - (item.discount || 0) / 100);
+            }, 0);
+
+            const overallDiscount = data.discount || 0;
+            const discountAmount = afterItemDiscounts * (overallDiscount / 100);
+            const grandTotal = afterItemDiscounts - discountAmount;
+
+            // Show/hide subtotal and discount rows
+            const subtotalRow = document.getElementById('subtotalRow');
+            const discountRow = document.getElementById('discountRow');
+
+            if (overallDiscount > 0) {
+                subtotalRow.style.display = 'flex';
+                discountRow.style.display = 'flex';
+                document.getElementById('subtotal').textContent = formatPrice(afterItemDiscounts);
+                document.getElementById('discountAmount').textContent = `-${formatPrice(discountAmount)} (${overallDiscount}%)`;
+            } else {
+                subtotalRow.style.display = 'none';
+                discountRow.style.display = 'none';
+            }
+
+            document.getElementById('grandTotal').textContent = formatPrice(grandTotal);
+        }
+
+        // Use Server-Sent Events for real-time updates
+        function connectSSE() {
+            const eventSource = new EventSource('/api/sale_stream');
+
+            eventSource.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.updated_at !== lastUpdateTime) {
+                        lastUpdateTime = data.updated_at;
+                        renderSale(data);
+                    }
+                } catch (e) {
+                    console.error('Error parsing SSE data:', e);
+                }
+            };
+
+            eventSource.onerror = function() {
+                console.log('SSE connection lost, reconnecting...');
+                eventSource.close();
+                // Fallback to polling if SSE fails
+                setTimeout(connectSSE, 2000);
+            };
+        }
+
+        // Start connection
+        connectSSE();
+
+        // Initial load
+        fetch('/api/get_sale')
+            .then(res => res.json())
+            .then(response => {
+                if (response.status === 'success') {
+                    renderSale(response.data);
+                }
+            })
+            .catch(err => console.error('Error fetching initial sale:', err));
+    </script>
+</body>
+</html>
