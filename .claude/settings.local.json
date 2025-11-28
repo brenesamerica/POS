@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(export BILLINGO_ENV=test)",
+      "Bash(export FLASK_SECRET_KEY=dev-secret-key)",
+      "Bash(python app.py:*)",
+      "Bash(\"/mnt/c/Program Files/Tailscale/tailscale.exe\" serve --bg 5000)",
+      "Bash(\"/mnt/c/Program Files/Git/cmd/git.exe\" add static/style.css templates/)",
+      "Bash(\"/mnt/c/Program Files/Git/cmd/git.exe\" commit -m \"$(cat <<''EOF''\nAdd responsive design for phones and tablets\n\n- Global responsive styles in style.css for all screen sizes\n- market_mode.html: Stack columns on mobile, smaller product tiles,\n  touch-friendly inputs, landscape mode optimization\n- main_menu.html: 2-column grid on tablet, single column on phone\n- prepare_market.html: Stack columns, full-width inputs\n- market_history.html: Responsive session cards and stats grid\n- market_session_detail.html: Scrollable tables, responsive stats\n\nKey mobile improvements:\n- Minimum 48px touch targets for buttons/inputs\n- 16px font-size on inputs to prevent iOS zoom\n- Horizontal scroll for tables\n- Stacked layouts for better mobile viewing\n- Adjusted spacing and font sizes\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(\"/mnt/c/Program Files/Git/cmd/git.exe\" push)",
+      "Bash(sqlite3:*)",
+      "Bash(python3:*)",
+      "Bash(/mnt/c/Users/brene/source/repos/brenesamerica/POS/env/Scripts/python.exe:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

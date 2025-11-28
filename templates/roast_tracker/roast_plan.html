@@ -1,0 +1,240 @@
+{% extends "roast_tracker/base.html" %}
+
+{% block title %}Roast Plan{% endblock %}
+
+{% block extra_css %}
+<style>
+    .plan-card {
+        background: white;
+        border: 1px solid var(--gray-200);
+        border-radius: var(--radius);
+        padding: 16px;
+        margin-bottom: 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .plan-info {
+        flex: 1;
+    }
+
+    .plan-product {
+        font-weight: 600;
+        font-size: 1rem;
+        margin-bottom: 4px;
+    }
+
+    .plan-meta {
+        font-size: 0.85rem;
+        color: var(--gray-500);
+    }
+
+    .plan-weight {
+        font-size: 1.2rem;
+        font-weight: 600;
+        margin-right: 20px;
+    }
+
+    .plan-actions {
+        display: flex;
+        gap: 8px;
+    }
+
+    .source-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 8px;
+        font-size: 0.7rem;
+        background: var(--gray-100);
+        color: var(--gray-600);
+        margin-left: 8px;
+    }
+
+    .source-badge.order {
+        background: rgba(59, 130, 246, 0.1);
+        color: #2563eb;
+    }
+
+    .source-badge.advent {
+        background: rgba(205, 154, 89, 0.1);
+        color: #8b5e34;
+    }
+
+    .add-form {
+        background: var(--gray-50);
+        border-radius: var(--radius);
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    .add-form .form-row {
+        display: grid;
+        grid-template-columns: 2fr 1fr 1fr auto;
+        gap: 12px;
+        align-items: end;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--gray-500);
+    }
+
+    .empty-state .icon {
+        font-size: 48px;
+        margin-bottom: 16px;
+    }
+
+    @media (max-width: 768px) {
+        .plan-card {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .plan-actions {
+            width: 100%;
+            justify-content: flex-end;
+        }
+
+        .add-form .form-row {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Roast Plan</h1>
+    <div>
+        <a href="{{ url_for('roast_tracker.orders') }}" class="btn btn-secondary">View Orders</a>
+        <a href="{{ url_for('roast_tracker.new_roast') }}" class="btn btn-primary">+ New Roast</a>
+    </div>
+</div>
+
+<div class="page-content">
+    <!-- Add New Item Form -->
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Add to Roast Plan</h2>
+        </div>
+
+        <form method="POST" class="add-form">
+            <input type="hidden" name="action" value="add">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="product_id">Product</label>
+                    <select name="product_id" id="product_id" required>
+                        <option value="">-- Select Product --</option>
+                        {% for product in products %}
+                        <option value="{{ product.id }}">
+                            {{ product.name }} ({{ product.country }}) - {{ product.roast_level }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="planned_weight_g">Green Weight (g)</label>
+                    <input type="number" name="planned_weight_g" id="planned_weight_g"
+                           value="888" min="100" step="1" required>
+                </div>
+                <div class="form-group">
+                    <label for="planned_date">Planned Date</label>
+                    <input type="date" name="planned_date" id="planned_date"
+                           value="{{ today }}" required>
+                </div>
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary">Add</button>
+                </div>
+            </div>
+            <div class="form-group" style="margin-top: 12px;">
+                <label for="notes">Notes (optional)</label>
+                <input type="text" name="notes" id="notes" placeholder="e.g., For customer order #123">
+            </div>
+        </form>
+    </div>
+
+    <!-- Current Plan -->
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Planned Roasts</h2>
+        </div>
+
+        {% if plans %}
+        <div style="padding: 16px;">
+            {% for plan in plans %}
+            <div class="plan-card">
+                <div class="plan-info">
+                    <div class="plan-product">
+                        {{ plan.product_name }}
+                        <span class="roast-badge {{ plan.roast_level|default('K') }}">{{ plan.roast_level|default('K') }}</span>
+                        {% if plan.source == 'order_analysis' %}
+                        <span class="source-badge order">Order</span>
+                        {% elif plan.source == 'advent' %}
+                        <span class="source-badge advent">Advent</span>
+                        {% endif %}
+                    </div>
+                    <div class="plan-meta">
+                        {{ plan.country }} | Planned for {{ plan.planned_date }}
+                        {% if plan.notes %} | {{ plan.notes }}{% endif %}
+                    </div>
+                </div>
+                <div class="plan-weight">{{ plan.planned_green_weight_g|int }}g</div>
+                <div class="plan-actions">
+                    <form method="POST" style="display: inline;">
+                        <input type="hidden" name="action" value="complete">
+                        <input type="hidden" name="plan_id" value="{{ plan.id }}">
+                        <button type="submit" class="btn btn-secondary" style="padding: 6px 12px;">
+                            Mark Done
+                        </button>
+                    </form>
+                    <form method="POST" style="display: inline;">
+                        <input type="hidden" name="action" value="delete">
+                        <input type="hidden" name="plan_id" value="{{ plan.id }}">
+                        <button type="submit" class="btn btn-danger" style="padding: 6px 12px;"
+                                onclick="return confirm('Delete this plan item?')">
+                            Delete
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <div class="icon">&#128203;</div>
+            <h3>No Planned Roasts</h3>
+            <p>Add items to your roast plan above, or use the Orders page to auto-generate suggestions.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Summary -->
+    {% if plans %}
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Plan Summary</h2>
+        </div>
+
+        <div style="padding: 16px;">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="value">{{ plans|length }}</div>
+                    <div class="label">Items Planned</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">{{ plans|sum(attribute='planned_green_weight_g')|int }}g</div>
+                    <div class="label">Total Green Coffee</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">~{{ (plans|sum(attribute='planned_green_weight_g') * 0.85)|int }}g</div>
+                    <div class="label">Expected Roasted (~15% loss)</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

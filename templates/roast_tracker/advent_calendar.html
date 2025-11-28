@@ -1,0 +1,314 @@
+{% extends "roast_tracker/base.html" %}
+
+{% block title %}Advent Calendar{% endblock %}
+
+{% block extra_css %}
+<style>
+    .info-box {
+        background: rgba(205, 154, 89, 0.1);
+        border: 1px solid var(--roast-medium);
+        border-radius: var(--radius);
+        padding: 16px;
+        margin-bottom: 20px;
+    }
+
+    .info-box p {
+        margin: 0;
+        font-size: 0.9rem;
+        color: var(--gray-700);
+    }
+
+    .info-box strong {
+        color: var(--roast-dark);
+    }
+
+    .selection-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+    }
+
+    .selection-card {
+        border: 2px solid var(--gray-200);
+        border-radius: var(--radius);
+        padding: 16px;
+        background: white;
+    }
+
+    .selection-card .slot-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+    }
+
+    .selection-card .slot-number {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        flex-shrink: 0;
+    }
+
+    .selection-card .slot-info {
+        font-size: 0.75rem;
+        color: var(--gray-500);
+    }
+
+    .selection-card.light .slot-number {
+        background: var(--roast-light);
+        color: #5a4a00;
+    }
+
+    .selection-card.medium .slot-number {
+        background: var(--roast-medium);
+        color: white;
+    }
+
+    .selection-card select {
+        width: 100%;
+        padding: 10px;
+        border: 2px solid var(--gray-200);
+        border-radius: var(--radius-sm);
+        font-size: 0.9rem;
+    }
+
+    .selection-card select:focus {
+        outline: none;
+        border-color: var(--roast-medium);
+    }
+
+    .selection-card .weight-display {
+        margin-top: 8px;
+        padding: 8px;
+        background: var(--gray-50);
+        border-radius: var(--radius-sm);
+        font-size: 0.85rem;
+        text-align: center;
+        color: var(--gray-600);
+    }
+
+    .summary-box {
+        background: var(--gray-50);
+        border-radius: var(--radius);
+        padding: 20px;
+        margin-top: 20px;
+    }
+
+    .summary-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--gray-200);
+    }
+
+    .summary-row:last-child {
+        border-bottom: none;
+        font-weight: 600;
+        font-size: 1.1rem;
+    }
+
+    @media (max-width: 768px) {
+        .selection-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    @media (max-width: 480px) {
+        .selection-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Advent Calendar Production</h1>
+</div>
+
+<div class="page-content">
+    <form method="POST" id="adventForm">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Calendar Details</h2>
+            </div>
+
+            <div class="info-box">
+                <p><strong>24-Day Advent Calendar:</strong> Select 4 light roasts and 4 medium roasts. Each roast repeats 3 times (days) at 16g per day = <strong>48g per selection</strong>.</p>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="advent_date">Production Date</label>
+                    <input type="date" name="advent_date" id="advent_date" value="{{ today }}" required>
+                </div>
+                <div class="form-group">
+                    <label>LOT Number Preview</label>
+                    <input type="text" id="adventLotPreview" disabled style="background: var(--gray-100);" value="AK/...">
+                </div>
+            </div>
+        </div>
+
+        <!-- Light Roasts (V) -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <span class="roast-badge V">V</span>
+                    Light Roasts (4 selections × 3 days × 16g = 192g)
+                </h2>
+            </div>
+
+            <div class="selection-grid">
+                {% for i in range(1, 5) %}
+                <div class="selection-card light">
+                    <div class="slot-header">
+                        <div class="slot-number">{{ i }}</div>
+                        <div class="slot-info">3 days × 16g</div>
+                    </div>
+                    <select name="light_{{ i }}_batch" class="batch-select" data-type="light" required>
+                        <option value="">Select batch...</option>
+                        {% for batch in light_batches %}
+                        <option value="{{ batch.id }}" data-available="{{ batch.available_weight_g }}">
+                            {{ batch.product_name }} - {{ batch.lot_number }} ({{ batch.available_weight_g|int }}g)
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <input type="hidden" name="light_{{ i }}_weight" value="48">
+                    <div class="weight-display">48g</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Medium Roasts (K) -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <span class="roast-badge K">K</span>
+                    Medium Roasts (4 selections × 3 days × 16g = 192g)
+                </h2>
+            </div>
+
+            <div class="selection-grid">
+                {% for i in range(1, 5) %}
+                <div class="selection-card medium">
+                    <div class="slot-header">
+                        <div class="slot-number">{{ i }}</div>
+                        <div class="slot-info">3 days × 16g</div>
+                    </div>
+                    <select name="medium_{{ i }}_batch" class="batch-select" data-type="medium" required>
+                        <option value="">Select batch...</option>
+                        {% for batch in medium_batches %}
+                        <option value="{{ batch.id }}" data-available="{{ batch.available_weight_g }}">
+                            {{ batch.product_name }} - {{ batch.lot_number }} ({{ batch.available_weight_g|int }}g)
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <input type="hidden" name="medium_{{ i }}_weight" value="48">
+                    <div class="weight-display">48g</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Summary -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Summary</h2>
+            </div>
+
+            <div class="summary-box">
+                <div class="summary-row">
+                    <span>Light Roasts (V) - 4 × 48g</span>
+                    <span>192g</span>
+                </div>
+                <div class="summary-row">
+                    <span>Medium Roasts (K) - 4 × 48g</span>
+                    <span>192g</span>
+                </div>
+                <div class="summary-row">
+                    <span>Total Weight (24 days × 16g)</span>
+                    <span>384g</span>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+                <a href="{{ url_for('roast_tracker.dashboard') }}" class="btn btn-secondary">Cancel</a>
+                <button type="submit" class="btn btn-primary">Create Advent Calendar</button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const MONTH_CODES = {
+        1: 'JAN', 2: 'FEB', 3: 'MAR', 4: 'APR',
+        5: 'MAJ', 6: 'JUN', 7: 'JUL', 8: 'AUG',
+        9: 'SZEPT', 10: 'OKT', 11: 'NOV', 12: 'DEC'
+    };
+
+    function updateAdventLot() {
+        const dateInput = document.getElementById('advent_date');
+        const date = new Date(dateInput.value);
+        if (date) {
+            const year = date.getFullYear();
+            const month = MONTH_CODES[date.getMonth() + 1];
+            const day = String(date.getDate()).padStart(2, '0');
+            document.getElementById('adventLotPreview').value = `AK/${year}${month}${day}/1`;
+        }
+    }
+
+    // Prevent duplicate selections within each roast type
+    function updateAvailableOptions(roastType) {
+        const selects = document.querySelectorAll(`select[name^="${roastType}_"]`);
+        const selectedValues = [];
+
+        // Collect all selected values
+        selects.forEach(select => {
+            if (select.value) {
+                selectedValues.push(select.value);
+            }
+        });
+
+        // Update each select's options
+        selects.forEach(select => {
+            const currentValue = select.value;
+            const options = select.querySelectorAll('option');
+
+            options.forEach(option => {
+                if (option.value === '') return; // Skip placeholder
+
+                // Disable if selected elsewhere, enable if it's the current select's value
+                if (selectedValues.includes(option.value) && option.value !== currentValue) {
+                    option.disabled = true;
+                    option.style.color = 'var(--gray-400)';
+                } else {
+                    option.disabled = false;
+                    option.style.color = '';
+                }
+            });
+        });
+    }
+
+    // Event listeners
+    document.getElementById('advent_date').addEventListener('change', updateAdventLot);
+
+    // Add change listeners to all batch selects
+    document.querySelectorAll('select[name^="light_"]').forEach(select => {
+        select.addEventListener('change', () => updateAvailableOptions('light'));
+    });
+
+    document.querySelectorAll('select[name^="medium_"]').forEach(select => {
+        select.addEventListener('change', () => updateAvailableOptions('medium'));
+    });
+
+    // Initial update
+    updateAdventLot();
+</script>
+{% endblock %}

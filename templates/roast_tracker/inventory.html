@@ -1,0 +1,653 @@
+{% extends "roast_tracker/base.html" %}
+
+{% block title %}Inventory{% endblock %}
+
+{% block extra_css %}
+<style>
+    .product-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
+    }
+
+    .product-card {
+        background: white;
+        border: 1px solid var(--gray-200);
+        border-radius: var(--radius);
+        padding: 16px;
+        transition: box-shadow 0.2s;
+    }
+
+    .product-card:hover {
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .product-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 12px;
+    }
+
+    .product-name {
+        font-weight: 600;
+        font-size: 1rem;
+    }
+
+    .product-origin {
+        color: var(--gray-500);
+        font-size: 0.85rem;
+    }
+
+    .product-stats {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+
+    .product-stat {
+        background: var(--gray-50);
+        padding: 8px;
+        border-radius: var(--radius-sm);
+        text-align: center;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+
+    .product-stat:hover {
+        background: var(--gray-100);
+    }
+
+    .product-stat .value {
+        font-weight: 600;
+        font-size: 1.1rem;
+    }
+
+    .product-stat .label {
+        font-size: 0.75rem;
+        color: var(--gray-500);
+    }
+
+    .product-stat .edit-hint {
+        font-size: 0.65rem;
+        color: var(--gray-400);
+        margin-top: 2px;
+    }
+
+    .add-to-plan-form {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .add-to-plan-form input {
+        width: 80px;
+        padding: 6px 8px;
+        font-size: 0.9rem;
+    }
+
+    .add-to-plan-form button {
+        white-space: nowrap;
+    }
+
+    /* Modal styles */
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .modal-overlay.active {
+        display: flex;
+    }
+
+    .modal {
+        background: white;
+        border-radius: var(--radius);
+        width: 90%;
+        max-width: 500px;
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+
+    .modal-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--gray-200);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .modal-header h3 {
+        margin: 0;
+        font-size: 1.1rem;
+    }
+
+    .modal-close {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: var(--gray-500);
+        padding: 0;
+        line-height: 1;
+    }
+
+    .modal-close:hover {
+        color: var(--gray-800);
+    }
+
+    .modal-body {
+        padding: 20px;
+    }
+
+    .modal-footer {
+        padding: 16px 20px;
+        border-top: 1px solid var(--gray-200);
+        display: flex;
+        gap: 12px;
+        justify-content: flex-end;
+    }
+
+    .adjustment-type-buttons {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 16px;
+    }
+
+    .adjustment-type-btn {
+        flex: 1;
+        padding: 10px;
+        border: 2px solid var(--gray-200);
+        background: white;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        font-size: 0.9rem;
+        transition: all 0.2s;
+    }
+
+    .adjustment-type-btn:hover {
+        border-color: var(--roast-medium);
+    }
+
+    .adjustment-type-btn.active {
+        border-color: var(--roast-medium);
+        background: rgba(205, 154, 89, 0.1);
+    }
+
+    .current-stock-display {
+        background: var(--gray-50);
+        padding: 12px;
+        border-radius: var(--radius-sm);
+        margin-bottom: 16px;
+        text-align: center;
+    }
+
+    .current-stock-display .label {
+        font-size: 0.85rem;
+        color: var(--gray-500);
+    }
+
+    .current-stock-display .value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--roast-medium);
+    }
+
+    .history-list {
+        max-height: 200px;
+        overflow-y: auto;
+        border: 1px solid var(--gray-200);
+        border-radius: var(--radius-sm);
+    }
+
+    .history-item {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--gray-100);
+        font-size: 0.85rem;
+    }
+
+    .history-item:last-child {
+        border-bottom: none;
+    }
+
+    .history-item .date {
+        color: var(--gray-500);
+        font-size: 0.75rem;
+    }
+
+    .history-item .change {
+        font-weight: 500;
+    }
+
+    .history-item .change.add {
+        color: #16a34a;
+    }
+
+    .history-item .change.subtract {
+        color: #dc2626;
+    }
+
+    .history-item .comment {
+        color: var(--gray-600);
+        font-style: italic;
+        margin-top: 4px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Inventory</h1>
+    <div>
+        <a href="{{ url_for('roast_tracker.roast_plan') }}" class="btn btn-secondary">View Roast Plan</a>
+    </div>
+</div>
+
+<div class="page-content">
+    <!-- All Products (Offerings) -->
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">All Products</h2>
+        </div>
+
+        {% if products %}
+        <div class="product-grid" style="padding: 16px;">
+            {% for product in products %}
+            <div class="product-card">
+                <div class="product-header">
+                    <div>
+                        <div class="product-name">{{ product.name }}</div>
+                        <div class="product-origin">{{ product.country or 'Unknown' }}</div>
+                    </div>
+                    <span class="roast-badge {{ product.roast_level }}">{{ product.roast_level }}</span>
+                </div>
+
+                <div class="product-stats">
+                    <div class="product-stat" onclick="openEditModal({{ product.id }}, '{{ product.name }}', {{ product.total_available_g|int }})" title="Click to edit">
+                        <div class="value">
+                            {% if product.total_available_g >= 500 %}
+                            <span style="color: #16a34a;">{{ product.total_available_g|int }}g</span>
+                            {% elif product.total_available_g >= 200 %}
+                            <span style="color: #ca8a04;">{{ product.total_available_g|int }}g</span>
+                            {% elif product.total_available_g > 0 %}
+                            <span style="color: #dc2626;">{{ product.total_available_g|int }}g</span>
+                            {% else %}
+                            <span style="color: var(--gray-400);">0g</span>
+                            {% endif %}
+                        </div>
+                        <div class="label">Available</div>
+                        <div class="edit-hint">click to edit</div>
+                    </div>
+                    <div class="product-stat" style="cursor: default;">
+                        <div class="value">{{ product.batch_count }}</div>
+                        <div class="label">Batches</div>
+                    </div>
+                </div>
+
+                <div class="add-to-plan-form">
+                    <input type="number" id="weight_{{ product.id }}" value="888" min="100" step="1" placeholder="g">
+                    <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.85rem;"
+                            onclick="addToPlan({{ product.id }}, '{{ product.name }}')">
+                        + Plan
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p style="text-align: center; color: var(--gray-500); padding: 40px;">
+            No products configured. <a href="{{ url_for('roast_tracker.setup_products') }}">Add products</a> first.
+        </p>
+        {% endif %}
+    </div>
+
+    <!-- Roast Batches -->
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">All Roast Batches</h2>
+        </div>
+
+        {% if batches %}
+        <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>LOT Number</th>
+                        <th>Product</th>
+                        <th>Country</th>
+                        <th>Level</th>
+                        <th>Roast Date</th>
+                        <th>Roasted</th>
+                        <th>Available</th>
+                        <th>Used</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for batch in batches %}
+                    <tr>
+                        <td><span class="lot-number">{{ batch.lot_number }}</span></td>
+                        <td>{{ batch.product_name }}</td>
+                        <td>{{ batch.country or '-' }}</td>
+                        <td><span class="roast-badge {{ batch.roast_level }}">{{ batch.roast_level }}</span></td>
+                        <td>{{ batch.roast_date }}</td>
+                        <td>{{ batch.roasted_weight_g|int }}g</td>
+                        <td>
+                            {% if batch.available_weight_g >= 500 %}
+                            <span class="stock-indicator high">{{ batch.available_weight_g|int }}g</span>
+                            {% elif batch.available_weight_g >= 200 %}
+                            <span class="stock-indicator medium">{{ batch.available_weight_g|int }}g</span>
+                            {% elif batch.available_weight_g > 0 %}
+                            <span class="stock-indicator low">{{ batch.available_weight_g|int }}g</span>
+                            {% else %}
+                            <span style="color: var(--gray-400);">0g</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ batch.used_weight_g|int }}g</td>
+                        <td>
+                            <a href="{{ url_for('roast_tracker.batch_detail', batch_id=batch.id) }}" class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.8rem;">View</a>
+                            {% if batch.available_weight_g > 0 %}
+                            <a href="{{ url_for('roast_tracker.production') }}?batch_id={{ batch.id }}" class="btn btn-primary" style="padding: 4px 12px; font-size: 0.8rem;">Use</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p style="text-align: center; color: var(--gray-500); padding: 40px;">
+            No roast batches recorded yet.
+        </p>
+        {% endif %}
+    </div>
+
+    <!-- Production History -->
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Production History</h2>
+        </div>
+
+        {% if production %}
+        <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Production LOT</th>
+                        <th>Type</th>
+                        <th>Size</th>
+                        <th>Qty</th>
+                        <th>Coffee Used</th>
+                        <th>Source LOT(s)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for prod in production %}
+                    <tr>
+                        <td>{{ prod.production_date }}</td>
+                        <td><span class="lot-number">{{ prod.production_lot }}</span></td>
+                        <td>{{ prod.production_type }}</td>
+                        <td>{{ prod.package_size_g or '-' }}g</td>
+                        <td>{{ prod.quantity }}</td>
+                        <td>{{ prod.total_coffee_used_g|int }}g</td>
+                        <td>{{ prod.source_lots or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p style="text-align: center; color: var(--gray-500); padding: 40px;">
+            No production recorded yet.
+        </p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Edit Inventory Modal -->
+<div class="modal-overlay" id="editModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="modalTitle">Edit Inventory</h3>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="current-stock-display">
+                <div class="label">Current Available</div>
+                <div class="value" id="currentStock">0g</div>
+            </div>
+
+            <div class="adjustment-type-buttons">
+                <button type="button" class="adjustment-type-btn active" data-type="set" onclick="selectAdjustmentType('set')">
+                    Set To
+                </button>
+                <button type="button" class="adjustment-type-btn" data-type="add" onclick="selectAdjustmentType('add')">
+                    + Add
+                </button>
+                <button type="button" class="adjustment-type-btn" data-type="subtract" onclick="selectAdjustmentType('subtract')">
+                    - Subtract
+                </button>
+            </div>
+
+            <div class="form-group">
+                <label for="adjustAmount">Amount (g)</label>
+                <input type="number" id="adjustAmount" min="0" step="1" placeholder="Enter amount in grams">
+            </div>
+
+            <div class="form-group">
+                <label for="adjustComment">Comment (required for audit)</label>
+                <textarea id="adjustComment" rows="2" placeholder="e.g., Physical count correction, Damaged stock, etc." style="width: 100%; padding: 10px; border: 2px solid var(--gray-200); border-radius: var(--radius-sm);"></textarea>
+            </div>
+
+            <div class="form-group" style="margin-top: 20px;">
+                <label>Recent Adjustments</label>
+                <div class="history-list" id="historyList">
+                    <div class="history-item" style="color: var(--gray-400); text-align: center;">Loading...</div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveAdjustment()">Save Adjustment</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentProductId = null;
+    let currentStock = 0;
+    let adjustmentType = 'set';
+
+    function openEditModal(productId, productName, availableG) {
+        currentProductId = productId;
+        currentStock = availableG;
+
+        document.getElementById('modalTitle').textContent = `Edit: ${productName}`;
+        document.getElementById('currentStock').textContent = `${availableG}g`;
+        document.getElementById('adjustAmount').value = availableG;
+        document.getElementById('adjustComment').value = '';
+
+        // Reset adjustment type to 'set'
+        selectAdjustmentType('set');
+
+        // Load history
+        loadHistory(productId);
+
+        document.getElementById('editModal').classList.add('active');
+    }
+
+    function closeModal() {
+        document.getElementById('editModal').classList.remove('active');
+        currentProductId = null;
+    }
+
+    function selectAdjustmentType(type) {
+        adjustmentType = type;
+
+        // Update button states
+        document.querySelectorAll('.adjustment-type-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.dataset.type === type) {
+                btn.classList.add('active');
+            }
+        });
+
+        // Update amount field
+        const amountInput = document.getElementById('adjustAmount');
+        if (type === 'set') {
+            amountInput.value = currentStock;
+            amountInput.placeholder = 'New total amount';
+        } else {
+            amountInput.value = '';
+            amountInput.placeholder = type === 'add' ? 'Amount to add' : 'Amount to subtract';
+        }
+    }
+
+    async function loadHistory(productId) {
+        const historyList = document.getElementById('historyList');
+
+        try {
+            const response = await fetch(`{{ url_for("roast_tracker.api_inventory_history", product_id=0) }}`.replace('/0', `/${productId}`));
+            const data = await response.json();
+
+            if (data.status === 'success' && data.adjustments.length > 0) {
+                historyList.innerHTML = data.adjustments.map(adj => {
+                    const changeClass = adj.adjustment_type === 'add' ? 'add' : (adj.adjustment_type === 'subtract' ? 'subtract' : '');
+                    const changeText = adj.adjustment_type === 'set' ? `Set to ${adj.new_total_g}g` :
+                                       adj.adjustment_type === 'add' ? `+${adj.amount_g}g` :
+                                       adj.adjustment_type === 'subtract' ? `-${adj.amount_g}g` :
+                                       `Correction: ${adj.new_total_g}g`;
+                    return `
+                        <div class="history-item">
+                            <div class="date">${adj.created_at}</div>
+                            <div class="change ${changeClass}">${changeText}</div>
+                            <div>Previous: ${adj.previous_total_g}g → New: ${adj.new_total_g}g</div>
+                            <div class="comment">"${adj.comment}"</div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                historyList.innerHTML = '<div class="history-item" style="color: var(--gray-400); text-align: center;">No adjustment history</div>';
+            }
+        } catch (error) {
+            historyList.innerHTML = '<div class="history-item" style="color: var(--gray-400); text-align: center;">Failed to load history</div>';
+        }
+    }
+
+    async function saveAdjustment() {
+        const amount = parseFloat(document.getElementById('adjustAmount').value);
+        const comment = document.getElementById('adjustComment').value.trim();
+
+        if (isNaN(amount) || amount < 0) {
+            alert('Please enter a valid amount');
+            return;
+        }
+
+        if (!comment) {
+            alert('Comment is required for audit trail');
+            document.getElementById('adjustComment').focus();
+            return;
+        }
+
+        const btn = event.target;
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+
+        try {
+            const response = await fetch('{{ url_for("roast_tracker.api_adjust_inventory") }}', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    product_id: currentProductId,
+                    adjustment_type: adjustmentType,
+                    amount_g: amount,
+                    comment: comment
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                alert(`Inventory updated!\nPrevious: ${data.previous_total_g}g\nNew: ${data.new_total_g}g`);
+                closeModal();
+                location.reload();
+            } else {
+                alert('Error: ' + (data.message || 'Unknown error'));
+                btn.disabled = false;
+                btn.textContent = 'Save Adjustment';
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+            btn.disabled = false;
+            btn.textContent = 'Save Adjustment';
+        }
+    }
+
+    // Close modal on escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeModal();
+    });
+
+    // Close modal on overlay click
+    document.getElementById('editModal').addEventListener('click', (e) => {
+        if (e.target.classList.contains('modal-overlay')) closeModal();
+    });
+
+    async function addToPlan(productId, productName) {
+        const weight = document.getElementById(`weight_${productId}`).value;
+        const btn = event.target;
+
+        btn.disabled = true;
+        btn.textContent = 'Adding...';
+
+        try {
+            const response = await fetch('{{ url_for("roast_tracker.api_add_to_plan") }}', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    product_id: productId,
+                    planned_weight_g: parseInt(weight),
+                    planned_date: '{{ today }}',
+                    source: 'inventory'
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                btn.textContent = 'Added!';
+                btn.style.background = '#16a34a';
+                btn.style.color = 'white';
+
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.textContent = '+ Plan';
+                    btn.style.background = '';
+                    btn.style.color = '';
+                }, 2000);
+            } else {
+                alert('Error: ' + (data.message || 'Unknown error'));
+                btn.disabled = false;
+                btn.textContent = '+ Plan';
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+            btn.disabled = false;
+            btn.textContent = '+ Plan';
+        }
+    }
+</script>
+{% endblock %}

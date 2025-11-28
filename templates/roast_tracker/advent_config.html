@@ -1,0 +1,335 @@
+{% extends "roast_tracker/base.html" %}
+
+{% block title %}Advent Calendar Configuration{% endblock %}
+
+{% block extra_css %}
+<style>
+    .config-section {
+        margin-bottom: 24px;
+    }
+
+    .config-section-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+
+    .config-section-header h3 {
+        margin: 0;
+    }
+
+    .config-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+    }
+
+    .config-slot {
+        background: white;
+        border: 2px solid var(--gray-200);
+        border-radius: var(--radius);
+        padding: 16px;
+    }
+
+    .config-slot.light {
+        border-color: var(--roast-light);
+    }
+
+    .config-slot.medium {
+        border-color: var(--roast-medium);
+    }
+
+    .slot-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+    }
+
+    .slot-number {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 0.85rem;
+    }
+
+    .config-slot.light .slot-number {
+        background: var(--roast-light);
+        color: #5a4a00;
+    }
+
+    .config-slot.medium .slot-number {
+        background: var(--roast-medium);
+        color: white;
+    }
+
+    .slot-info {
+        font-size: 0.75rem;
+        color: var(--gray-500);
+    }
+
+    .config-slot select {
+        width: 100%;
+        padding: 10px;
+        border: 2px solid var(--gray-200);
+        border-radius: var(--radius-sm);
+        font-size: 0.9rem;
+    }
+
+    .config-slot select:focus {
+        outline: none;
+        border-color: var(--roast-medium);
+    }
+
+    .inventory-indicator {
+        margin-top: 8px;
+        padding: 6px 10px;
+        border-radius: var(--radius-sm);
+        font-size: 0.8rem;
+        text-align: center;
+    }
+
+    .inventory-indicator.ok {
+        background: rgba(34, 197, 94, 0.1);
+        color: #16a34a;
+    }
+
+    .inventory-indicator.warning {
+        background: rgba(239, 68, 68, 0.1);
+        color: #dc2626;
+    }
+
+    .summary-box {
+        background: var(--gray-50);
+        border-radius: var(--radius);
+        padding: 20px;
+        margin-top: 20px;
+    }
+
+    .summary-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--gray-200);
+    }
+
+    .summary-row:last-child {
+        border-bottom: none;
+    }
+
+    .info-box {
+        background: rgba(205, 154, 89, 0.1);
+        border: 1px solid var(--roast-medium);
+        border-radius: var(--radius);
+        padding: 16px;
+        margin-bottom: 20px;
+    }
+
+    .info-box p {
+        margin: 0;
+        font-size: 0.9rem;
+        color: var(--gray-700);
+    }
+
+    @media (max-width: 768px) {
+        .config-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    @media (max-width: 480px) {
+        .config-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Advent Calendar Configuration</h1>
+    <div>
+        <a href="{{ url_for('roast_tracker.advent_calendar') }}" class="btn btn-primary">Create Calendar</a>
+    </div>
+</div>
+
+<div class="page-content">
+    <form method="POST">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Configure Coffee Selection</h2>
+            </div>
+
+            <div class="info-box">
+                <p><strong>24-Day Advent Calendar:</strong> Select 4 light roasts and 4 medium roasts.
+                Each roast repeats 3 times at 16g per day = <strong>48g per selection</strong>.
+                Total: 384g per calendar.</p>
+            </div>
+
+            <!-- Light Roasts (V) -->
+            <div class="config-section">
+                <div class="config-section-header">
+                    <span class="roast-badge V">V</span>
+                    <h3>Light Roasts (4 selections)</h3>
+                </div>
+
+                <div class="config-grid">
+                    {% for i in range(1, 5) %}
+                    <div class="config-slot light">
+                        <div class="slot-header">
+                            <div class="slot-number">{{ i }}</div>
+                            <div class="slot-info">3 days x 16g = 48g</div>
+                        </div>
+                        <select name="light_{{ i }}" id="light_{{ i }}">
+                            <option value="">-- Select --</option>
+                            {% for product in light_products %}
+                            <option value="{{ product.id }}"
+                                    {% if config_by_slot.light.get(i) == product.id %}selected{% endif %}>
+                                {{ product.name }} ({{ product.country }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="inventory-indicator" id="inv_light_{{ i }}" style="display: none;"></div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Medium Roasts (K) -->
+            <div class="config-section">
+                <div class="config-section-header">
+                    <span class="roast-badge K">K</span>
+                    <h3>Medium Roasts (4 selections)</h3>
+                </div>
+
+                <div class="config-grid">
+                    {% for i in range(1, 5) %}
+                    <div class="config-slot medium">
+                        <div class="slot-header">
+                            <div class="slot-number">{{ i }}</div>
+                            <div class="slot-info">3 days x 16g = 48g</div>
+                        </div>
+                        <select name="medium_{{ i }}" id="medium_{{ i }}">
+                            <option value="">-- Select --</option>
+                            {% for product in medium_products %}
+                            <option value="{{ product.id }}"
+                                    {% if config_by_slot.medium.get(i) == product.id %}selected{% endif %}>
+                                {{ product.name }} ({{ product.country }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="inventory-indicator" id="inv_medium_{{ i }}" style="display: none;"></div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Summary -->
+            <div class="summary-box">
+                <div class="summary-row">
+                    <span>Light Roasts (V) - 4 x 48g</span>
+                    <span>192g</span>
+                </div>
+                <div class="summary-row">
+                    <span>Medium Roasts (K) - 4 x 48g</span>
+                    <span>192g</span>
+                </div>
+                <div class="summary-row" style="font-weight: 600;">
+                    <span>Total per Calendar</span>
+                    <span>384g</span>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+                <a href="{{ url_for('roast_tracker.dashboard') }}" class="btn btn-secondary">Cancel</a>
+                <button type="submit" class="btn btn-primary">Save Configuration</button>
+            </div>
+        </div>
+    </form>
+
+    <!-- Inventory Status -->
+    {% if inventory_status %}
+    <div class="card" style="margin-top: 20px;">
+        <div class="card-header">
+            <h2 class="card-title">Inventory Status for Current Configuration</h2>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>Available</th>
+                    <th>Needed</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for product_id, status in inventory_status.items() %}
+                <tr>
+                    <td>Product #{{ product_id }}</td>
+                    <td>{{ status.available_g|int }}g</td>
+                    <td>48g</td>
+                    <td>
+                        {% if status.enough_for_advent %}
+                        <span class="stock-indicator high">OK</span>
+                        {% else %}
+                        <span class="stock-indicator low">Need Roasting</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Store inventory status from server
+    const inventoryStatus = {{ inventory_status|tojson|safe }};
+
+    function updateInventoryIndicators() {
+        ['light', 'medium'].forEach(type => {
+            for (let i = 1; i <= 4; i++) {
+                const select = document.getElementById(`${type}_${i}`);
+                const indicator = document.getElementById(`inv_${type}_${i}`);
+
+                if (select.value) {
+                    const productId = select.value;  // Keep as string
+                    const status = inventoryStatus[productId];
+
+                    if (status) {
+                        indicator.style.display = 'block';
+                        if (status.enough_for_advent) {
+                            indicator.className = 'inventory-indicator ok';
+                            indicator.textContent = `${status.available_g}g available`;
+                        } else {
+                            indicator.className = 'inventory-indicator warning';
+                            indicator.textContent = `Only ${status.available_g}g - need roasting!`;
+                        }
+                    } else {
+                        indicator.style.display = 'none';
+                    }
+                } else {
+                    indicator.style.display = 'none';
+                }
+            }
+        });
+    }
+
+    // Add change listeners
+    document.querySelectorAll('select').forEach(select => {
+        select.addEventListener('change', updateInventoryIndicators);
+    });
+
+    // Initial update
+    updateInventoryIndicators();
+</script>
+{% endblock %}

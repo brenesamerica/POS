@@ -1,0 +1,180 @@
+{% extends "roast_tracker/base.html" %}
+
+{% block title %}Batch {{ batch.lot_number }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>
+        <span class="lot-number">{{ batch.lot_number }}</span>
+        <span class="roast-badge {{ batch.roast_level }}" style="margin-left: 12px;">{{ roast_levels[batch.roast_level] }}</span>
+    </h1>
+    {% if batch.available_weight_g > 0 %}
+    <a href="{{ url_for('roast_tracker.production') }}?batch_id={{ batch.id }}" class="btn btn-primary">Use for Production</a>
+    {% endif %}
+</div>
+
+<div class="page-content">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <!-- Batch Info -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Roast Information</h2>
+            </div>
+
+            <table style="width: 100%;">
+                <tr>
+                    <td style="color: var(--gray-500); padding: 8px 0;">Product</td>
+                    <td style="font-weight: 500; padding: 8px 0;">{{ batch.product_name }}</td>
+                </tr>
+                <tr>
+                    <td style="color: var(--gray-500); padding: 8px 0;">Country</td>
+                    <td style="padding: 8px 0;">{{ batch.country or '-' }}</td>
+                </tr>
+                <tr>
+                    <td style="color: var(--gray-500); padding: 8px 0;">Process</td>
+                    <td style="padding: 8px 0;">{{ batch.process or '-' }}</td>
+                </tr>
+                <tr>
+                    <td style="color: var(--gray-500); padding: 8px 0;">Tasting Notes</td>
+                    <td style="padding: 8px 0;">{{ batch.tasting_notes or '-' }}</td>
+                </tr>
+                <tr>
+                    <td style="color: var(--gray-500); padding: 8px 0;">Roast Date</td>
+                    <td style="padding: 8px 0;">{{ batch.roast_date }}</td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- Weights -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Weights & Stock</h2>
+            </div>
+
+            <div class="stats-grid" style="margin-bottom: 0;">
+                <div class="stat-card">
+                    <div class="value">{{ batch.green_weight_g|int }}g</div>
+                    <div class="label">Green</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">{{ batch.roasted_weight_g|int }}g</div>
+                    <div class="label">Roasted</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value" style="color: {% if batch.available_weight_g > 0 %}var(--success){% else %}var(--gray-400){% endif %};">{{ batch.available_weight_g|int }}g</div>
+                    <div class="label">Available</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">{{ batch.weight_loss_percent|round(1) if batch.weight_loss_percent else '-' }}%</div>
+                    <div class="label">Weight Loss</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Roast Details -->
+    {% if batch.total_roast_time or batch.drop_temp or batch.first_crack_time %}
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Roast Profile</h2>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 16px;">
+            {% if batch.preheat_temp %}
+            <div style="text-align: center;">
+                <div style="font-size: 1.3rem; font-weight: 600;">{{ batch.preheat_temp|int }}°C</div>
+                <div style="font-size: 0.85rem; color: var(--gray-500);">Preheat</div>
+            </div>
+            {% endif %}
+            {% if batch.charge_temp %}
+            <div style="text-align: center;">
+                <div style="font-size: 1.3rem; font-weight: 600;">{{ batch.charge_temp|int }}°C</div>
+                <div style="font-size: 0.85rem; color: var(--gray-500);">Charge Temp</div>
+            </div>
+            {% endif %}
+            {% if batch.first_crack_time %}
+            <div style="text-align: center;">
+                <div style="font-size: 1.3rem; font-weight: 600;">{{ (batch.first_crack_time // 60)|int }}:{{ '%02d'|format(batch.first_crack_time % 60) }}</div>
+                <div style="font-size: 0.85rem; color: var(--gray-500);">First Crack</div>
+            </div>
+            {% endif %}
+            {% if batch.first_crack_temp %}
+            <div style="text-align: center;">
+                <div style="font-size: 1.3rem; font-weight: 600;">{{ batch.first_crack_temp|int }}°C</div>
+                <div style="font-size: 0.85rem; color: var(--gray-500);">FC Temp</div>
+            </div>
+            {% endif %}
+            {% if batch.drop_temp %}
+            <div style="text-align: center;">
+                <div style="font-size: 1.3rem; font-weight: 600;">{{ batch.drop_temp|int }}°C</div>
+                <div style="font-size: 0.85rem; color: var(--gray-500);">Drop Temp</div>
+            </div>
+            {% endif %}
+            {% if batch.total_roast_time %}
+            <div style="text-align: center;">
+                <div style="font-size: 1.3rem; font-weight: 600;">{{ (batch.total_roast_time // 60)|int }}:{{ '%02d'|format(batch.total_roast_time % 60) }}</div>
+                <div style="font-size: 0.85rem; color: var(--gray-500);">Total Time</div>
+            </div>
+            {% endif %}
+            {% if batch.ambient_temp %}
+            <div style="text-align: center;">
+                <div style="font-size: 1.3rem; font-weight: 600;">{{ batch.ambient_temp|int }}°C</div>
+                <div style="font-size: 0.85rem; color: var(--gray-500);">Ambient</div>
+            </div>
+            {% endif %}
+            {% if batch.humidity %}
+            <div style="text-align: center;">
+                <div style="font-size: 1.3rem; font-weight: 600;">{{ batch.humidity|int }}%</div>
+                <div style="font-size: 0.85rem; color: var(--gray-500);">Humidity</div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Production from this batch -->
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Production from This Batch</h2>
+        </div>
+
+        {% if production %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>LOT</th>
+                    <th>Qty</th>
+                    <th>Weight Used</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for prod in production %}
+                <tr>
+                    <td>{{ prod.production_date }}</td>
+                    <td>{{ prod.production_type }}</td>
+                    <td><span class="lot-number">{{ prod.production_lot }}</span></td>
+                    <td>{{ prod.quantity }}</td>
+                    <td>{{ prod.total_coffee_used_g|int }}g</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="text-align: center; color: var(--gray-500); padding: 24px;">
+            No production recorded from this batch yet.
+        </p>
+        {% endif %}
+    </div>
+
+    {% if batch.notes %}
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Notes</h2>
+        </div>
+        <p>{{ batch.notes }}</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

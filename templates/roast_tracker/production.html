@@ -1,0 +1,247 @@
+{% extends "roast_tracker/base.html" %}
+
+{% block title %}Production{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Production / Packaging</h1>
+</div>
+
+<div class="page-content">
+    <form method="POST" id="productionForm">
+        <!-- Step 1: Select Batch -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">1. Select Roasted Coffee</h2>
+            </div>
+
+            {% if batches %}
+            <div class="batch-grid">
+                {% for batch in batches %}
+                <div class="batch-card {% if request.args.get('batch_id')|int == batch.id %}selected{% endif %}"
+                     onclick="selectBatch({{ batch.id }}, '{{ batch.lot_number }}', {{ batch.available_weight_g }}, '{{ batch.roast_level }}')"
+                     data-batch-id="{{ batch.id }}">
+                    <div class="header">
+                        <div>
+                            <div class="product-name">{{ batch.product_name }}</div>
+                            <div class="country">{{ batch.country or 'Unknown origin' }}</div>
+                        </div>
+                        <span class="roast-badge {{ batch.roast_level }}">{{ batch.roast_level }}</span>
+                    </div>
+                    <div style="margin-bottom: 12px;">
+                        <span class="lot-number">{{ batch.lot_number }}</span>
+                    </div>
+                    <div class="details">
+                        <span class="detail-label">Available:</span>
+                        <span class="detail-value">
+                            {% if batch.available_weight_g >= 500 %}
+                            <span class="stock-indicator high">{{ batch.available_weight_g|int }}g</span>
+                            {% elif batch.available_weight_g >= 200 %}
+                            <span class="stock-indicator medium">{{ batch.available_weight_g|int }}g</span>
+                            {% else %}
+                            <span class="stock-indicator low">{{ batch.available_weight_g|int }}g</span>
+                            {% endif %}
+                        </span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p style="text-align: center; color: var(--gray-500); padding: 40px;">
+                No roasted coffee available. <a href="{{ url_for('roast_tracker.new_roast') }}">Add a roast</a> first.
+            </p>
+            {% endif %}
+
+            <input type="hidden" name="roast_batch_id" id="roast_batch_id" required>
+        </div>
+
+        <!-- Step 2: Select Production Type -->
+        <div class="card" id="step2" style="display: none;">
+            <div class="card-header">
+                <h2 class="card-title">2. Select Production Type</h2>
+                <span id="selectedBatchInfo" class="lot-number"></span>
+            </div>
+
+            <div class="production-options">
+                <div class="production-option" onclick="selectType('whole_bean_250')">
+                    <div class="icon">📦</div>
+                    <div class="name">Whole Bean</div>
+                    <div class="size">250g</div>
+                </div>
+                <div class="production-option" onclick="selectType('whole_bean_70')">
+                    <div class="icon">📦</div>
+                    <div class="name">Whole Bean</div>
+                    <div class="size">70g</div>
+                </div>
+                <div class="production-option" onclick="selectType('whole_bean_16')">
+                    <div class="icon">📦</div>
+                    <div class="name">Whole Bean</div>
+                    <div class="size">16g</div>
+                </div>
+                <div class="production-option" onclick="selectType('drip_11')">
+                    <div class="icon">☕</div>
+                    <div class="name">Drip Coffee</div>
+                    <div class="size">11g</div>
+                </div>
+                <div class="production-option" onclick="selectType('cold_brew')">
+                    <div class="icon">🧊</div>
+                    <div class="name">Cold Brew</div>
+                    <div class="size">Variable</div>
+                </div>
+                <div class="production-option" onclick="selectType('market')">
+                    <div class="icon">🛒</div>
+                    <div class="name">Market</div>
+                    <div class="size">Variable</div>
+                </div>
+                <div class="production-option" onclick="selectType('sampling')">
+                    <div class="icon">🔬</div>
+                    <div class="name">Sampling</div>
+                    <div class="size">Variable</div>
+                </div>
+            </div>
+
+            <input type="hidden" name="production_type" id="production_type" required>
+        </div>
+
+        <!-- Step 3: Quantity -->
+        <div class="card" id="step3" style="display: none;">
+            <div class="card-header">
+                <h2 class="card-title">3. Enter Quantity</h2>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group" id="quantityGroup">
+                    <label for="quantity">Number of Packages</label>
+                    <input type="number" name="quantity" id="quantity" min="1" value="1">
+                </div>
+                <div class="form-group" id="customWeightGroup" style="display: none;">
+                    <label for="custom_weight_g">Weight (grams)</label>
+                    <input type="number" name="custom_weight_g" id="custom_weight_g" step="1">
+                </div>
+                <div class="form-group">
+                    <label>Total Coffee Needed</label>
+                    <input type="text" id="totalNeeded" disabled style="background: var(--gray-100); font-weight: bold;">
+                </div>
+            </div>
+
+            <div id="stockWarning" style="display: none; padding: 12px; background: rgba(239, 68, 68, 0.1); color: var(--danger); border-radius: var(--radius-sm); margin-bottom: 16px;">
+                Not enough stock available!
+            </div>
+
+            <div class="form-group">
+                <label for="notes">Notes (optional)</label>
+                <input type="text" name="notes" id="notes" placeholder="e.g., Order #123">
+            </div>
+
+            <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+                <a href="{{ url_for('roast_tracker.dashboard') }}" class="btn btn-secondary">Cancel</a>
+                <button type="submit" class="btn btn-primary" id="submitBtn" disabled>Record Production</button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let selectedBatchId = null;
+    let selectedLot = null;
+    let availableStock = 0;
+    let selectedType = null;
+    let packageSize = 0;
+
+    const packageSizes = {
+        'whole_bean_250': 250,
+        'whole_bean_70': 70,
+        'whole_bean_16': 16,
+        'drip_11': 11,
+        'sampling': 0,
+        'cold_brew': 0,
+        'market': 0
+    };
+
+    function selectBatch(batchId, lot, available, level) {
+        selectedBatchId = batchId;
+        selectedLot = lot;
+        availableStock = available;
+
+        // Update UI
+        document.querySelectorAll('.batch-card').forEach(card => {
+            card.classList.remove('selected');
+            if (card.dataset.batchId == batchId) {
+                card.classList.add('selected');
+            }
+        });
+
+        document.getElementById('roast_batch_id').value = batchId;
+        document.getElementById('selectedBatchInfo').textContent = lot + ' (' + available + 'g available)';
+        document.getElementById('step2').style.display = 'block';
+
+        // Reset subsequent steps
+        document.getElementById('step3').style.display = 'none';
+        selectedType = null;
+        document.querySelectorAll('.production-option').forEach(opt => opt.classList.remove('selected'));
+    }
+
+    function selectType(type) {
+        selectedType = type;
+        packageSize = packageSizes[type];
+
+        document.querySelectorAll('.production-option').forEach(opt => opt.classList.remove('selected'));
+        event.currentTarget.classList.add('selected');
+
+        document.getElementById('production_type').value = type;
+        document.getElementById('step3').style.display = 'block';
+
+        // Show/hide quantity vs custom weight
+        if (type === 'cold_brew' || type === 'market' || type === 'sampling') {
+            document.getElementById('quantityGroup').style.display = 'none';
+            document.getElementById('customWeightGroup').style.display = 'block';
+            document.getElementById('quantity').value = 1;
+        } else {
+            document.getElementById('quantityGroup').style.display = 'block';
+            document.getElementById('customWeightGroup').style.display = 'none';
+        }
+
+        updateTotal();
+    }
+
+    function updateTotal() {
+        let total = 0;
+        if (selectedType === 'cold_brew' || selectedType === 'market' || selectedType === 'sampling') {
+            total = parseFloat(document.getElementById('custom_weight_g').value) || 0;
+        } else {
+            const qty = parseInt(document.getElementById('quantity').value) || 0;
+            total = qty * packageSize;
+        }
+
+        document.getElementById('totalNeeded').value = total + 'g';
+
+        // Check stock
+        const submitBtn = document.getElementById('submitBtn');
+        const warning = document.getElementById('stockWarning');
+
+        if (total > availableStock) {
+            warning.style.display = 'block';
+            submitBtn.disabled = true;
+        } else if (total > 0) {
+            warning.style.display = 'none';
+            submitBtn.disabled = false;
+        } else {
+            warning.style.display = 'none';
+            submitBtn.disabled = true;
+        }
+    }
+
+    document.getElementById('quantity').addEventListener('input', updateTotal);
+    document.getElementById('custom_weight_g').addEventListener('input', updateTotal);
+
+    // Pre-select batch from URL if provided
+    {% if request.args.get('batch_id') %}
+    const preselectedBatch = document.querySelector('[data-batch-id="{{ request.args.get('batch_id') }}"]');
+    if (preselectedBatch) {
+        preselectedBatch.click();
+    }
+    {% endif %}
+</script>
+{% endblock %}

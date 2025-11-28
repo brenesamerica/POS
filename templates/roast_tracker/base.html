@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Roast Tracker{% endblock %} - Café Tiko</title>
+    <link rel="icon" href="{{ url_for('static', filename='images/icononly_transparent_nobuffer.png') }}" sizes="32x32">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --roast-light: #eed25f;
+            --roast-medium: #cd9a59;
+            --roast-dark: #794f2b;
+        }
+
+        body {
+            background: #f8f5f2;
+        }
+
+        .tracker-nav {
+            background: linear-gradient(135deg, var(--roast-medium) 0%, var(--roast-dark) 100%);
+            padding: 0 20px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            box-shadow: var(--shadow-md);
+        }
+
+        .tracker-nav .logo {
+            padding: 12px 0;
+        }
+
+        .tracker-nav .logo img {
+            height: 40px;
+        }
+
+        .tracker-nav .nav-links {
+            display: flex;
+            gap: 4px;
+        }
+
+        .tracker-nav .nav-link {
+            color: rgba(255,255,255,0.8);
+            text-decoration: none;
+            padding: 16px 16px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s;
+            border-bottom: 3px solid transparent;
+        }
+
+        .tracker-nav .nav-link:hover {
+            color: white;
+            background: rgba(255,255,255,0.1);
+        }
+
+        .tracker-nav .nav-link.active {
+            color: white;
+            border-bottom-color: var(--roast-light);
+        }
+
+        .tracker-nav .nav-right {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .tracker-nav .back-link {
+            color: rgba(255,255,255,0.7);
+            text-decoration: none;
+            font-size: 0.85rem;
+        }
+
+        .tracker-nav .back-link:hover {
+            color: white;
+        }
+
+        .page-header {
+            background: white;
+            padding: 20px 30px;
+            border-bottom: 1px solid var(--gray-200);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .page-header h1 {
+            font-size: 1.5rem;
+            color: var(--gray-800);
+            margin: 0;
+        }
+
+        .page-content {
+            padding: 24px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: white;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--gray-100);
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--gray-800);
+            margin: 0;
+        }
+
+        .roast-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .roast-badge.V {
+            background: var(--roast-light);
+            color: #5a4a00;
+        }
+
+        .roast-badge.K {
+            background: var(--roast-medium);
+            color: white;
+        }
+
+        .roast-badge.S {
+            background: var(--roast-dark);
+            color: white;
+        }
+
+        .lot-number {
+            font-family: 'Courier New', monospace;
+            font-weight: 600;
+            background: var(--gray-100);
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .stock-indicator {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .stock-indicator.high {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+
+        .stock-indicator.medium {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning);
+        }
+
+        .stock-indicator.low {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+        }
+
+        .batch-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 16px;
+        }
+
+        .batch-card {
+            background: white;
+            border: 2px solid var(--gray-100);
+            border-radius: var(--radius);
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .batch-card:hover {
+            border-color: var(--roast-medium);
+            box-shadow: var(--shadow-md);
+        }
+
+        .batch-card.selected {
+            border-color: var(--roast-medium);
+            background: rgba(139, 90, 43, 0.05);
+        }
+
+        .batch-card .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .batch-card .product-name {
+            font-weight: 600;
+            font-size: 1rem;
+            color: var(--gray-800);
+        }
+
+        .batch-card .country {
+            font-size: 0.85rem;
+            color: var(--gray-500);
+        }
+
+        .batch-card .details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            font-size: 0.85rem;
+        }
+
+        .batch-card .detail-label {
+            color: var(--gray-500);
+        }
+
+        .batch-card .detail-value {
+            font-weight: 500;
+            text-align: right;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: var(--radius);
+            padding: 16px;
+            text-align: center;
+            box-shadow: var(--shadow);
+        }
+
+        .stat-card .value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--roast-medium);
+        }
+
+        .stat-card .label {
+            font-size: 0.85rem;
+            color: var(--gray-500);
+            margin-top: 4px;
+        }
+
+        .form-section {
+            margin-bottom: 24px;
+        }
+
+        .form-section-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--gray-600);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 12px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--gray-700);
+            margin-bottom: 6px;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px 14px;
+            border: 2px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--roast-medium);
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--roast-medium) 0%, var(--roast-dark) 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-secondary {
+            background: var(--gray-100);
+            color: var(--gray-700);
+        }
+
+        .btn-secondary:hover {
+            background: var(--gray-200);
+        }
+
+        .btn-danger {
+            background: #dc2626;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #b91c1c;
+        }
+
+        .production-options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .production-option {
+            background: white;
+            border: 2px solid var(--gray-200);
+            border-radius: var(--radius);
+            padding: 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .production-option:hover {
+            border-color: var(--roast-light);
+        }
+
+        .production-option.selected {
+            border-color: var(--roast-medium);
+            background: rgba(139, 90, 43, 0.05);
+        }
+
+        .production-option .icon {
+            font-size: 2rem;
+            margin-bottom: 8px;
+        }
+
+        .production-option .name {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .production-option .size {
+            font-size: 0.8rem;
+            color: var(--gray-500);
+        }
+
+        .flash-messages {
+            padding: 0 24px;
+        }
+
+        .flash {
+            padding: 12px 16px;
+            border-radius: var(--radius-sm);
+            margin-top: 16px;
+        }
+
+        .flash.success {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .flash.error {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        table th {
+            text-align: left;
+            padding: 12px;
+            background: var(--gray-50);
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--gray-600);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        table td {
+            padding: 12px;
+            border-bottom: 1px solid var(--gray-100);
+        }
+
+        table tr:hover {
+            background: var(--gray-50);
+        }
+
+        @media (max-width: 768px) {
+            .tracker-nav {
+                flex-wrap: wrap;
+                padding: 10px;
+            }
+
+            .tracker-nav .nav-links {
+                width: 100%;
+                overflow-x: auto;
+            }
+
+            .page-header {
+                flex-direction: column;
+                gap: 12px;
+                align-items: flex-start;
+            }
+
+            .batch-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <nav class="tracker-nav">
+        <div class="logo">
+            <img src="{{ url_for('static', filename='images/fulllogo_transparent_nobuffer.png') }}" alt="Café Tiko">
+        </div>
+        <div class="nav-links">
+            <a href="{{ url_for('roast_tracker.dashboard') }}" class="nav-link {% if request.endpoint == 'roast_tracker.dashboard' %}active{% endif %}">Dashboard</a>
+            <a href="{{ url_for('roast_tracker.orders') }}" class="nav-link {% if request.endpoint == 'roast_tracker.orders' %}active{% endif %}">Orders</a>
+            <a href="{{ url_for('roast_tracker.roast_plan') }}" class="nav-link {% if request.endpoint == 'roast_tracker.roast_plan' %}active{% endif %}">Plan</a>
+            <a href="{{ url_for('roast_tracker.new_roast') }}" class="nav-link {% if request.endpoint == 'roast_tracker.new_roast' %}active{% endif %}">New Roast</a>
+            <a href="{{ url_for('roast_tracker.production') }}" class="nav-link {% if request.endpoint == 'roast_tracker.production' %}active{% endif %}">Package Coffee</a>
+            <a href="{{ url_for('roast_tracker.advent_config') }}" class="nav-link {% if request.endpoint == 'roast_tracker.advent_config' %}active{% endif %}">Advent</a>
+            <a href="{{ url_for('roast_tracker.inventory') }}" class="nav-link {% if request.endpoint == 'roast_tracker.inventory' %}active{% endif %}">Inventory</a>
+            <a href="{{ url_for('roast_tracker.setup_products') }}" class="nav-link {% if request.endpoint == 'roast_tracker.setup_products' %}active{% endif %}">Setup</a>
+        </div>
+        <div class="nav-right">
+            <a href="{{ url_for('main_menu') }}" class="back-link">← Back to POS</a>
+        </div>
+    </nav>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="flash-messages">
+        {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

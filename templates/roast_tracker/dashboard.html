@@ -1,0 +1,180 @@
+{% extends "roast_tracker/base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Roast Tracker Dashboard</h1>
+    <div>
+        <a href="{{ url_for('roast_tracker.new_roast') }}" class="btn btn-primary">+ New Roast</a>
+    </div>
+</div>
+
+<div class="page-content">
+    <!-- Stats -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="value">{{ "%.1f"|format(total_available_kg) }} kg</div>
+            <div class="label">Available Stock</div>
+        </div>
+        <div class="stat-card">
+            <div class="value">{{ batches|length }}</div>
+            <div class="label">Active Batches</div>
+        </div>
+        <div class="stat-card">
+            <div class="value">{{ low_stock|length }}</div>
+            <div class="label">Low Stock Alerts</div>
+        </div>
+    </div>
+
+    <!-- Low Stock Alerts -->
+    {% if low_stock %}
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Low Stock Alerts (&lt; 300g)</h2>
+            <a href="{{ url_for('roast_tracker.roast_plan') }}" class="btn btn-secondary">View Roast Plan</a>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>Origin</th>
+                    <th>Level</th>
+                    <th>Available</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for product in low_stock %}
+                <tr>
+                    <td>{{ product.product_name }}</td>
+                    <td><span style="color: var(--gray-500);">{{ product.country or 'Unknown' }}</span></td>
+                    <td><span class="roast-badge {{ product.roast_level }}">{{ product.roast_level }}</span></td>
+                    <td>
+                        {% if product.total_available_g == 0 %}
+                        <span class="stock-indicator low" style="background: rgba(239, 68, 68, 0.2);">0g - OUT</span>
+                        {% else %}
+                        <span class="stock-indicator low">{{ product.total_available_g|int }}g</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <button class="btn btn-primary" style="padding: 4px 12px; font-size: 0.8rem;"
+                                onclick="addToPlan({{ product.id }}, '{{ product.product_name }}')">+ Plan Roast</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- Available Batches -->
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Available Roasted Coffee</h2>
+            <a href="{{ url_for('roast_tracker.production') }}" class="btn btn-secondary">Start Production</a>
+        </div>
+
+        {% if batches %}
+        <div class="batch-grid">
+            {% for batch in batches %}
+            <div class="batch-card" onclick="location.href='{{ url_for('roast_tracker.batch_detail', batch_id=batch.id) }}'">
+                <div class="header">
+                    <div>
+                        <div class="product-name">{{ batch.product_name }}</div>
+                        <div class="country">{{ batch.country or 'Unknown origin' }}</div>
+                    </div>
+                    <span class="roast-badge {{ batch.roast_level }}">{{ batch.roast_level }}</span>
+                </div>
+                <div style="margin-bottom: 12px;">
+                    <span class="lot-number">{{ batch.lot_number }}</span>
+                </div>
+                <div class="details">
+                    <span class="detail-label">Available:</span>
+                    <span class="detail-value">
+                        {% if batch.available_weight_g >= 500 %}
+                        <span class="stock-indicator high">{{ batch.available_weight_g|int }}g</span>
+                        {% elif batch.available_weight_g >= 200 %}
+                        <span class="stock-indicator medium">{{ batch.available_weight_g|int }}g</span>
+                        {% else %}
+                        <span class="stock-indicator low">{{ batch.available_weight_g|int }}g</span>
+                        {% endif %}
+                    </span>
+                    <span class="detail-label">Roasted:</span>
+                    <span class="detail-value">{{ batch.roast_date }}</span>
+                    <span class="detail-label">Total:</span>
+                    <span class="detail-value">{{ batch.roasted_weight_g|int }}g</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p style="text-align: center; color: var(--gray-500); padding: 40px;">
+            No roasted coffee in stock. <a href="{{ url_for('roast_tracker.new_roast') }}">Add a roast</a> to get started.
+        </p>
+        {% endif %}
+    </div>
+
+    <!-- Recent Production -->
+    {% if recent_production %}
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Recent Production</h2>
+            <a href="{{ url_for('roast_tracker.inventory') }}" class="btn btn-secondary">View All</a>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>LOT</th>
+                    <th>Qty</th>
+                    <th>Coffee Used</th>
+                    <th>Source</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for prod in recent_production %}
+                <tr>
+                    <td>{{ prod.production_date }}</td>
+                    <td>{{ prod.production_type }}</td>
+                    <td><span class="lot-number">{{ prod.production_lot }}</span></td>
+                    <td>{{ prod.quantity }}</td>
+                    <td>{{ prod.total_coffee_used_g|int }}g</td>
+                    <td>{{ prod.source_lots or '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function addToPlan(productId, productName) {
+        try {
+            const response = await fetch('{{ url_for("roast_tracker.api_add_to_plan") }}', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    product_id: productId,
+                    planned_weight_g: 888,
+                    source: 'dashboard_low_stock'
+                })
+            });
+
+            const data = await response.json();
+            if (data.status === 'success') {
+                alert(`Added ${productName} (888g) to roast plan!`);
+                location.reload();
+            } else {
+                alert('Error: ' + (data.message || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+</script>
+{% endblock %}

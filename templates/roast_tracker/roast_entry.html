@@ -1,0 +1,424 @@
+{% extends "roast_tracker/base.html" %}
+
+{% block title %}New Roast{% endblock %}
+
+{% block extra_css %}
+<style>
+    .filter-section {
+        margin-bottom: 20px;
+    }
+
+    .filter-label {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--gray-600);
+        margin-bottom: 8px;
+        display: block;
+    }
+
+    .filter-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .filter-btn {
+        padding: 8px 16px;
+        border: 2px solid var(--gray-200);
+        border-radius: 20px;
+        background: white;
+        font-size: 0.9rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .filter-btn:hover {
+        border-color: var(--roast-medium);
+    }
+
+    .filter-btn.active {
+        border-color: var(--roast-medium);
+        background: var(--roast-medium);
+        color: white;
+    }
+
+    .filter-btn.roast-V.active {
+        background: var(--roast-light);
+        border-color: var(--roast-light);
+        color: #5a4a00;
+    }
+
+    .filter-btn.roast-K.active {
+        background: var(--roast-medium);
+        border-color: var(--roast-medium);
+        color: white;
+    }
+
+    .filter-btn.roast-S.active {
+        background: var(--roast-dark);
+        border-color: var(--roast-dark);
+        color: white;
+    }
+
+    .product-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 12px;
+        margin-top: 16px;
+    }
+
+    .product-card {
+        border: 2px solid var(--gray-200);
+        border-radius: var(--radius);
+        padding: 12px;
+        cursor: pointer;
+        transition: all 0.2s;
+        background: white;
+    }
+
+    .product-card:hover {
+        border-color: var(--roast-medium);
+        box-shadow: var(--shadow-md);
+    }
+
+    .product-card.selected {
+        border-color: var(--roast-dark);
+        background: rgba(121, 79, 43, 0.05);
+    }
+
+    .product-card.hidden {
+        display: none;
+    }
+
+    .product-card .product-image {
+        width: 100%;
+        height: 120px;
+        object-fit: cover;
+        border-radius: var(--radius-sm);
+        margin-bottom: 10px;
+        background: var(--gray-100);
+    }
+
+    .product-card .product-name {
+        font-weight: 600;
+        font-size: 1rem;
+        margin-bottom: 4px;
+    }
+
+    .product-card .product-origin {
+        font-size: 0.85rem;
+        color: var(--gray-500);
+        margin-bottom: 8px;
+    }
+
+    .no-products {
+        text-align: center;
+        padding: 40px;
+        color: var(--gray-500);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Add New Roast</h1>
+</div>
+
+<div class="page-content">
+    <form method="POST" id="roastForm">
+        <!-- Step 1: Select Product -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">1. Select Coffee Product</h2>
+            </div>
+
+            <div class="filter-section">
+                <span class="filter-label">Filter by Origin:</span>
+                <div class="filter-buttons" id="originFilters">
+                    <button type="button" class="filter-btn active" data-origin="all">All</button>
+                    {% for country in countries %}
+                    <button type="button" class="filter-btn" data-origin="{{ country }}">{{ country }}</button>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="filter-section">
+                <span class="filter-label">Filter by Roast Level:</span>
+                <div class="filter-buttons" id="roastFilters">
+                    <button type="button" class="filter-btn active" data-roast="all">All</button>
+                    <button type="button" class="filter-btn roast-V" data-roast="V">V - Vilagos</button>
+                    <button type="button" class="filter-btn roast-K" data-roast="K">K - Kozepes</button>
+                    <button type="button" class="filter-btn roast-S" data-roast="S">S - Sotet</button>
+                </div>
+            </div>
+
+            <div class="product-grid" id="productGrid">
+                {% for product in products %}
+                <div class="product-card"
+                     data-product-id="{{ product.id }}"
+                     data-origin="{{ product.country or 'Unknown' }}"
+                     data-roast="{{ product.roast_level }}"
+                     onclick="selectProduct({{ product.id }}, '{{ product.roast_level }}', '{{ product.name }}')">
+                    {% if product.image_url %}
+                    <img src="{{ product.image_url }}" alt="{{ product.name }}" class="product-image" onerror="this.style.display='none'">
+                    {% else %}
+                    <div class="product-image" style="display: flex; align-items: center; justify-content: center; font-size: 2rem;">☕</div>
+                    {% endif %}
+                    <div class="product-name">{{ product.name }}</div>
+                    <div class="product-origin">{{ product.country or 'Unknown' }}</div>
+                    <span class="roast-badge {{ product.roast_level }}">{{ roast_levels[product.roast_level] }}</span>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="no-products" id="noProducts" style="display: none;">
+                No products match your filters
+            </div>
+
+            <input type="hidden" name="product_id" id="product_id" required>
+        </div>
+
+        <!-- Step 2: Roast Details (shown after product selection) -->
+        <div class="card" id="step2" style="display: none;">
+            <div class="card-header">
+                <h2 class="card-title">2. Roast Details</h2>
+                <span id="selectedProductName" style="font-weight: 600; color: var(--roast-medium);"></span>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="roast_level">Roast Level *</label>
+                    <select name="roast_level" id="roast_level" required>
+                        {% for code, name in roast_levels.items() %}
+                        <option value="{{ code }}">{{ code }} - {{ name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="roast_date">Roast Date *</label>
+                    <input type="date" name="roast_date" id="roast_date" value="{{ today }}" required>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="form-section-title">Weights</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="green_weight_g">Green Weight (g) *</label>
+                        <input type="number" name="green_weight_g" id="green_weight_g" step="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="roasted_weight_g">Roasted Weight (g) *</label>
+                        <input type="number" name="roasted_weight_g" id="roasted_weight_g" step="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Weight Loss</label>
+                        <input type="text" id="weight_loss_display" disabled style="background: var(--gray-100);">
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="form-section-title">LOT Number</div>
+                <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 200px;">
+                        <label style="font-size: 0.85rem; color: var(--gray-600); margin-bottom: 4px; display: block;">Preview</label>
+                        <div style="font-size: 1.5rem; padding: 12px 16px; background: var(--gray-50); border-radius: var(--radius-sm); text-align: center;">
+                            <span class="lot-number" id="lotPreview">-</span>
+                        </div>
+                    </div>
+                    <div style="width: 120px;">
+                        <label for="custom_sequence" style="font-size: 0.85rem; color: var(--gray-600); margin-bottom: 4px; display: block;">Sequence #</label>
+                        <input type="number" name="custom_sequence" id="custom_sequence" min="1" placeholder="Auto"
+                               style="text-align: center; font-size: 1.2rem; font-weight: 600;">
+                        <div style="font-size: 0.75rem; color: var(--gray-500); margin-top: 4px;">Next: <span id="nextSequence">-</span></div>
+                    </div>
+                </div>
+                <p style="font-size: 0.8rem; color: var(--gray-500); margin-top: 8px;">
+                    Leave sequence empty for auto-assignment, or enter a custom number for retroactive entries.
+                </p>
+            </div>
+
+            <div class="form-section">
+                <div class="form-section-title">Import from RoastTime (Optional)</div>
+                <div class="form-group">
+                    <label for="roasttime_uid">Select RoastTime Roast</label>
+                    <select name="roasttime_uid" id="roasttime_uid">
+                        <option value="">Manual entry (no import)</option>
+                        {% for roast in roasttime_roasts %}
+                        <option value="{{ roast.roasttime_uid }}"
+                                data-green="{{ roast.green_weight_g }}"
+                                data-roasted="{{ roast.roasted_weight_g }}"
+                                data-date="{{ roast.roast_date.strftime('%Y-%m-%d') if roast.roast_date else '' }}">
+                            {{ roast.roast_date.strftime('%Y-%m-%d') if roast.roast_date else 'No date' }} - {{ roast.roast_name }} ({{ roast.green_weight_g }}g -> {{ roast.roasted_weight_g }}g)
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="form-section-title">Notes</div>
+                <div class="form-group">
+                    <textarea name="notes" id="notes" rows="3" placeholder="Optional notes about this roast..."></textarea>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                <a href="{{ url_for('roast_tracker.dashboard') }}" class="btn btn-secondary">Cancel</a>
+                <button type="submit" class="btn btn-primary">Save Roast</button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let selectedOrigin = 'all';
+    let selectedRoast = 'all';
+    let selectedProductId = null;
+
+    const levelSelect = document.getElementById('roast_level');
+    const dateInput = document.getElementById('roast_date');
+    const greenInput = document.getElementById('green_weight_g');
+    const roastedInput = document.getElementById('roasted_weight_g');
+    const lossDisplay = document.getElementById('weight_loss_display');
+    const lotPreview = document.getElementById('lotPreview');
+    const roasttimeSelect = document.getElementById('roasttime_uid');
+    const customSequenceInput = document.getElementById('custom_sequence');
+    const nextSequenceDisplay = document.getElementById('nextSequence');
+
+    // Origin filter buttons
+    document.querySelectorAll('#originFilters .filter-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('#originFilters .filter-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            selectedOrigin = this.dataset.origin;
+            filterProducts();
+        });
+    });
+
+    // Roast filter buttons
+    document.querySelectorAll('#roastFilters .filter-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('#roastFilters .filter-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            selectedRoast = this.dataset.roast;
+            filterProducts();
+        });
+    });
+
+    function filterProducts() {
+        const cards = document.querySelectorAll('.product-card');
+        let visibleCount = 0;
+
+        cards.forEach(card => {
+            const matchOrigin = selectedOrigin === 'all' || card.dataset.origin === selectedOrigin;
+            const matchRoast = selectedRoast === 'all' || card.dataset.roast === selectedRoast;
+
+            if (matchOrigin && matchRoast) {
+                card.classList.remove('hidden');
+                visibleCount++;
+            } else {
+                card.classList.add('hidden');
+            }
+        });
+
+        document.getElementById('noProducts').style.display = visibleCount === 0 ? 'block' : 'none';
+    }
+
+    function selectProduct(productId, roastLevel, productName) {
+        selectedProductId = productId;
+
+        // Update UI
+        document.querySelectorAll('.product-card').forEach(card => {
+            card.classList.remove('selected');
+            if (card.dataset.productId == productId) {
+                card.classList.add('selected');
+            }
+        });
+
+        // Set hidden input
+        document.getElementById('product_id').value = productId;
+
+        // Set roast level
+        levelSelect.value = roastLevel;
+
+        // Show step 2
+        document.getElementById('step2').style.display = 'block';
+        document.getElementById('selectedProductName').textContent = productName;
+
+        // Update LOT preview
+        updateLotPreview();
+
+        // Scroll to step 2
+        document.getElementById('step2').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // Calculate weight loss
+    function calculateWeightLoss() {
+        const green = parseFloat(greenInput.value) || 0;
+        const roasted = parseFloat(roastedInput.value) || 0;
+        if (green > 0 && roasted > 0) {
+            const loss = ((green - roasted) / green * 100).toFixed(1);
+            lossDisplay.value = loss + '%';
+        } else {
+            lossDisplay.value = '-';
+        }
+    }
+
+    greenInput.addEventListener('input', calculateWeightLoss);
+    roastedInput.addEventListener('input', calculateWeightLoss);
+
+    // Update LOT preview
+    async function updateLotPreview() {
+        const level = levelSelect.value;
+        const date = dateInput.value;
+        const productId = document.getElementById('product_id').value;
+        const customSeq = customSequenceInput.value;
+
+        if (level && date) {
+            try {
+                const response = await fetch('{{ url_for("roast_tracker.api_generate_lot") }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        roast_level: level,
+                        roast_date: date,
+                        product_id: productId || null,
+                        custom_sequence: customSeq || null
+                    })
+                });
+                const data = await response.json();
+                lotPreview.textContent = data.lot_number;
+                nextSequenceDisplay.textContent = data.next_sequence;
+
+                // Set placeholder to next sequence
+                customSequenceInput.placeholder = data.next_sequence;
+            } catch (e) {
+                console.error('Error getting LOT preview:', e);
+            }
+        }
+    }
+
+    levelSelect.addEventListener('change', updateLotPreview);
+    dateInput.addEventListener('change', updateLotPreview);
+    customSequenceInput.addEventListener('input', updateLotPreview);
+
+    // RoastTime import
+    roasttimeSelect.addEventListener('change', function() {
+        const option = this.options[this.selectedIndex];
+        if (option.value) {
+            greenInput.value = option.dataset.green || '';
+            roastedInput.value = option.dataset.roasted || '';
+            if (option.dataset.date) {
+                dateInput.value = option.dataset.date;
+            }
+            calculateWeightLoss();
+            updateLotPreview();
+        }
+    });
+</script>
+{% endblock %}

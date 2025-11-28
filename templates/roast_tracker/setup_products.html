@@ -1,0 +1,304 @@
+{% extends "roast_tracker/base.html" %}
+
+{% block title %}Setup Products{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Product Setup</h1>
+</div>
+
+<div class="page-content">
+    <!-- Green Coffee (Raw Materials) -->
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Green Coffee Inventory</h2>
+            <button type="button" class="btn btn-primary" onclick="showAddGreenCoffee()">+ Add Green Coffee</button>
+        </div>
+
+        {% if green_coffees %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Country</th>
+                    <th>Process</th>
+                    <th>Tasting Notes</th>
+                    <th>Stock (kg)</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for coffee in green_coffees %}
+                <tr>
+                    <td><strong>{{ coffee.name }}</strong></td>
+                    <td>{{ coffee.country }}</td>
+                    <td>{{ coffee.process or '-' }}</td>
+                    <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;">{{ coffee.tasting_notes or '-' }}</td>
+                    <td>
+                        {% if coffee.current_stock_kg > 5 %}
+                        <span class="stock-indicator high">{{ coffee.current_stock_kg }} kg</span>
+                        {% elif coffee.current_stock_kg > 1 %}
+                        <span class="stock-indicator medium">{{ coffee.current_stock_kg }} kg</span>
+                        {% elif coffee.current_stock_kg > 0 %}
+                        <span class="stock-indicator low">{{ coffee.current_stock_kg }} kg</span>
+                        {% else %}
+                        <span style="color: var(--gray-400);">0 kg</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <button type="button" class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.8rem;" onclick="editGreenCoffee({{ coffee.id }})">Edit</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="text-align: center; color: var(--gray-500); padding: 40px;">
+            No green coffee added yet. Add your first green coffee to get started.
+        </p>
+        {% endif %}
+    </div>
+
+    <!-- Coffee Products (Roasted Profiles) -->
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Coffee Products (Roast Profiles)</h2>
+            <button type="button" class="btn btn-primary" onclick="showAddProduct()">+ Add Product</button>
+        </div>
+
+        {% if products %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Product Name</th>
+                    <th>Source</th>
+                    <th>Country</th>
+                    <th>Roast Level</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for product in products %}
+                <tr>
+                    <td><strong>{{ product.name }}</strong></td>
+                    <td>{{ product.green_coffee_name or '-' }}</td>
+                    <td>{{ product.country or '-' }}</td>
+                    <td><span class="roast-badge {{ product.roast_level }}">{{ roast_levels[product.roast_level] }}</span></td>
+                    <td>
+                        <button type="button" class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.8rem;" onclick="editProduct({{ product.id }})">Edit</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="text-align: center; color: var(--gray-500); padding: 40px;">
+            No products defined. Add green coffee first, then create roast profiles.
+        </p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Add Green Coffee Modal -->
+<div id="greenCoffeeModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="greenCoffeeModalTitle">Add Green Coffee</h3>
+            <button type="button" class="modal-close" onclick="closeModal('greenCoffeeModal')">&times;</button>
+        </div>
+        <form method="POST" action="{{ url_for('roast_tracker.add_green_coffee') }}" id="greenCoffeeForm">
+            <input type="hidden" name="green_coffee_id" id="green_coffee_id">
+            <div class="form-group">
+                <label for="gc_name">Name *</label>
+                <input type="text" name="name" id="gc_name" required placeholder="e.g., Ethiopia Yirgacheffe">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="gc_country">Country *</label>
+                    <input type="text" name="country" id="gc_country" required placeholder="e.g., Ethiopia">
+                </div>
+                <div class="form-group">
+                    <label for="gc_region">Region</label>
+                    <input type="text" name="region" id="gc_region" placeholder="e.g., Yirgacheffe">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="gc_process">Process</label>
+                    <select name="process" id="gc_process">
+                        <option value="">Select...</option>
+                        <option value="Washed">Washed</option>
+                        <option value="Natural">Natural</option>
+                        <option value="Honey">Honey</option>
+                        <option value="Anaerobic">Anaerobic</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="gc_stock_kg">Stock (kg)</label>
+                    <input type="number" name="stock_kg" id="gc_stock_kg" step="0.1" min="0" value="0">
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="gc_tasting_notes">Tasting Notes</label>
+                <input type="text" name="tasting_notes" id="gc_tasting_notes" placeholder="e.g., Blueberry, citrus, floral">
+            </div>
+            <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('greenCoffeeModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Add Product Modal -->
+<div id="productModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="productModalTitle">Add Product</h3>
+            <button type="button" class="modal-close" onclick="closeModal('productModal')">&times;</button>
+        </div>
+        <form method="POST" action="{{ url_for('roast_tracker.add_product') }}" id="productForm">
+            <input type="hidden" name="product_id" id="product_id">
+            <div class="form-group">
+                <label for="prod_name">Product Name *</label>
+                <input type="text" name="name" id="prod_name" required placeholder="e.g., Ethiopia Light">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="prod_green_coffee_id">Source Green Coffee</label>
+                    <select name="green_coffee_id" id="prod_green_coffee_id">
+                        <option value="">Select...</option>
+                        {% for coffee in green_coffees %}
+                        <option value="{{ coffee.id }}">{{ coffee.name }} ({{ coffee.country }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="prod_roast_level">Roast Level *</label>
+                    <select name="roast_level" id="prod_roast_level" required>
+                        {% for code, name in roast_levels.items() %}
+                        <option value="{{ code }}">{{ code }} - {{ name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--gray-500); margin-top: -8px;">
+                Tip: Create 3 products per origin (Light/V, Medium/K, Dark/S)
+            </p>
+            <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('productModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: white;
+    padding: 24px;
+    border-radius: var(--radius-lg);
+    width: 100%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.modal-header h3 {
+    margin: 0;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: var(--gray-500);
+}
+
+.modal-close:hover {
+    color: var(--gray-700);
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function showAddGreenCoffee() {
+    document.getElementById('greenCoffeeModalTitle').textContent = 'Add Green Coffee';
+    document.getElementById('greenCoffeeForm').reset();
+    document.getElementById('green_coffee_id').value = '';
+    document.getElementById('greenCoffeeModal').style.display = 'flex';
+}
+
+function showAddProduct() {
+    document.getElementById('productModalTitle').textContent = 'Add Product';
+    document.getElementById('productForm').reset();
+    document.getElementById('product_id').value = '';
+    document.getElementById('productModal').style.display = 'flex';
+}
+
+function closeModal(modalId) {
+    document.getElementById(modalId).style.display = 'none';
+}
+
+function editGreenCoffee(id) {
+    fetch(`{{ url_for('roast_tracker.api_get_green_coffee', coffee_id=0) }}`.replace('0', id))
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('greenCoffeeModalTitle').textContent = 'Edit Green Coffee';
+            document.getElementById('green_coffee_id').value = data.id;
+            document.getElementById('gc_name').value = data.name;
+            document.getElementById('gc_country').value = data.country;
+            document.getElementById('gc_region').value = data.region || '';
+            document.getElementById('gc_process').value = data.process || '';
+            document.getElementById('gc_stock_kg').value = data.current_stock_kg || 0;
+            document.getElementById('gc_tasting_notes').value = data.tasting_notes || '';
+            document.getElementById('greenCoffeeModal').style.display = 'flex';
+        });
+}
+
+function editProduct(id) {
+    fetch(`{{ url_for('roast_tracker.api_get_product', product_id=0) }}`.replace('0', id))
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('productModalTitle').textContent = 'Edit Product';
+            document.getElementById('product_id').value = data.id;
+            document.getElementById('prod_name').value = data.name;
+            document.getElementById('prod_green_coffee_id').value = data.green_coffee_id || '';
+            document.getElementById('prod_roast_level').value = data.roast_level;
+            document.getElementById('productModal').style.display = 'flex';
+        });
+}
+
+// Close modal on outside click
+document.querySelectorAll('.modal').forEach(modal => {
+    modal.addEventListener('click', function(e) {
+        if (e.target === this) {
+            this.style.display = 'none';
+        }
+    });
+});
+</script>
+{% endblock %}

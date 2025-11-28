@@ -14,7 +14,11 @@ from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
-app.secret_key = os.environ.get("FLASK_SECRET_KEY")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-key-change-in-production")
+
+# Register Roast Tracker Blueprint
+from roast_tracker.routes import roast_tracker
+app.register_blueprint(roast_tracker)
 
 # Custom Jinja2 filter to parse JSON
 @app.template_filter('from_json')
@@ -271,6 +275,74 @@ def wc_api_request(endpoint, params=None):
     except requests.exceptions.RequestException as e:
         logging.error(f"WooCommerce API error: {e}")
         return None
+
+
+def fetch_wc_orders(status='processing', per_page=100):
+    """Fetch WooCommerce orders with a specific status"""
+    orders = []
+    page = 1
+
+    while True:
+        params = {
+            'page': page,
+            'per_page': per_page,
+            'status': status,
+            'orderby': 'date',
+            'order': 'desc'
+        }
+
+        data = wc_api_request('orders', params)
+
+        if not data:
+            break
+
+        if len(data) == 0:
+            break
+
+        for order in data:
+            order_data = {
+                'id': order.get('id'),
+                'number': order.get('number'),
+                'status': order.get('status'),
+                'date_created': order.get('date_created'),
+                'total': order.get('total'),
+                'currency': order.get('currency'),
+                'billing': {
+                    'first_name': order.get('billing', {}).get('first_name', ''),
+                    'last_name': order.get('billing', {}).get('last_name', ''),
+                    'email': order.get('billing', {}).get('email', ''),
+                    'country': order.get('billing', {}).get('country', '')
+                },
+                'shipping': {
+                    'first_name': order.get('shipping', {}).get('first_name', ''),
+                    'last_name': order.get('shipping', {}).get('last_name', ''),
+                    'country': order.get('shipping', {}).get('country', '')
+                },
+                'line_items': []
+            }
+
+            for item in order.get('line_items', []):
+                line_item = {
+                    'id': item.get('id'),
+                    'product_id': item.get('product_id'),
+                    'variation_id': item.get('variation_id'),
+                    'name': item.get('name'),
+                    'quantity': item.get('quantity'),
+                    'subtotal': item.get('subtotal'),
+                    'sku': item.get('sku'),
+                    'meta_data': item.get('meta_data', [])
+                }
+                order_data['line_items'].append(line_item)
+
+            orders.append(order_data)
+
+        if len(data) < per_page:
+            break
+
+        page += 1
+
+    logging.info(f"Fetched {len(orders)} orders with status '{status}'")
+    return orders
 
 def fetch_products(lang=None):
     """Fetch all products from WooCommerce, including variations"""
@@ -1210,12 +1282,70 @@ def get_active_market_session():
     """Get the currently active market session (not closed)"""
     return query_db("SELECT * FROM market_sessions WHERE closed_at IS NULL ORDER BY created_at DESC LIMIT 1", one=True)
 
+
+def get_packaged_products():
+    """Get packaged products from roast_tracker.db for market preparation"""
+    from roast_tracker.database import get_db as get_roast_db
+
+    conn = get_roast_db()
+    cur = conn.cursor()
+
+    # Query production batches with product info
+    # Only get whole_bean packages (marketable sizes)
+    cur.execute("""
+        SELECT
+            pb.id as production_batch_id,
+            pb.production_lot,
+            pb.production_type,
+            pb.package_size_g,
+            pb.quantity,
+            pb.production_date,
+            rb.lot_number as source_lot,
+            rb.roast_level,
+            cp.name as product_name,
+            cp.image_url,
+            gc.country
+        FROM production_batches pb
+        JOIN production_sources ps ON pb.id = ps.production_batch_id
+        JOIN roast_batches rb ON ps.roast_batch_id = rb.id
+        JOIN coffee_products cp ON rb.product_id = cp.id
+        LEFT JOIN green_coffee gc ON cp.green_coffee_id = gc.id
+        WHERE pb.production_type IN ('whole_bean_250', 'whole_bean_70', 'whole_bean_16', 'drip_11')
+        ORDER BY pb.production_date DESC, cp.name
+    """)
+
+    results = cur.fetchall()
+    conn.close()
+
+    # Convert to list of dicts
+    packages = []
+    for row in results:
+        packages.append({
+            'id': row['production_batch_id'],
+            'production_lot': row['production_lot'],
+            'production_type': row['production_type'],
+            'package_size_g': row['package_size_g'],
+            'quantity': row['quantity'],
+            'production_date': row['production_date'],
+            'source_lot': row['source_lot'],
+            'roast_level': row['roast_level'],
+            'product_name': row['product_name'],
+            'image_url': row['image_url'],
+            'country': row['country']
+        })
+
+    return packages
+
+
 @app.route('/prepare_market')
 @login_required
 def prepare_market():
     active_session = get_active_market_session()
     items = query_db("SELECT * FROM items")
     categories = query_db("SELECT * FROM categories")
+
+    # Get packaged products from roast tracker
+    packaged_products = get_packaged_products()
 
     session_items = []
     if active_session:
@@ -1232,7 +1362,9 @@ def prepare_market():
                           active_session=active_session,
                           items=items,
                           categories=categories,
-                          session_items=session_items)
+                          session_items=session_items,
+                          packaged_products=packaged_products,
+                          billingo_env=BILLINGO_ENV)
 
 @app.route('/create_market_session', methods=['POST'])
 @login_required
@@ -1404,15 +1536,47 @@ def get_session_summary_route():
 def add_market_item():
     try:
         data = request.get_json()
-        item_id = data.get('item_id')
         lot_number = data.get('lot_number')
         quantity = int(data.get('quantity', 1))
+
+        # Support both old (item_id) and new (production_batch_id + product_name) formats
+        item_id = data.get('item_id')
+        production_batch_id = data.get('production_batch_id')
+        product_name = data.get('product_name')
 
         active_session = get_active_market_session()
         if not active_session:
             return jsonify({"status": "error", "message": "No active market session"}), 400
 
         session_id = active_session[0]
+
+        # If using package system, find matching item by product name
+        if production_batch_id and product_name and not item_id:
+            # Try to find item by name (partial match)
+            item = query_db("""
+                SELECT id FROM items WHERE name LIKE ?
+            """, [f"%{product_name}%"], one=True)
+
+            if item:
+                item_id = item[0]
+            else:
+                # Create a placeholder item for this product
+                # First, find or create a "Roast Tracker" category
+                roast_cat = query_db("SELECT id FROM categories WHERE name = 'Roast Tracker'", one=True)
+                if not roast_cat:
+                    query_db("INSERT INTO categories (name, is_coffee_shop) VALUES ('Roast Tracker', 0)")
+                    roast_cat = query_db("SELECT id FROM categories WHERE name = 'Roast Tracker'", one=True)
+
+                # Create the item
+                query_db("""
+                    INSERT INTO items (name, price, vat, category_id)
+                    VALUES (?, 0, '27%', ?)
+                """, (product_name, roast_cat[0]))
+                item = query_db("SELECT id FROM items WHERE name = ?", [product_name], one=True)
+                item_id = item[0]
+
+        if not item_id:
+            return jsonify({"status": "error", "message": "No item selected"}), 400
 
         # Check if this exact item+lot combination already exists
         existing = query_db("""

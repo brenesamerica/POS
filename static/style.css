@@ -1,14 +1,21 @@
 /* Modern POS System Styles */
 
 :root {
-    --primary: #6366f1;
-    --primary-dark: #4f46e5;
+    /* Cafe Tiko Brand Colors */
+    --primary: #f5bc00;          /* Gold/Yellow */
+    --primary-dark: #a71d31;     /* Deep Red */
+    --secondary-light: #eed25f;  /* Light Gold */
+    --secondary: #cd9a59;        /* Warm Brown */
+    --secondary-dark: #794f2b;   /* Dark Brown */
+
+    /* Semantic Colors */
     --success: #10b981;
     --success-dark: #059669;
-    --warning: #f59e0b;
-    --danger: #ef4444;
-    --coffee: #92400e;
-    --coffee-light: #d97706;
+    --warning: #f5bc00;          /* Using primary gold for warnings */
+    --danger: #a71d31;           /* Using primary red for danger */
+    --coffee: #794f2b;           /* Dark brown */
+    --coffee-light: #cd9a59;     /* Warm brown */
+
     --gray-50: #f9fafb;
     --gray-100: #f3f4f6;
     --gray-200: #e5e7eb;
@@ -96,7 +103,7 @@ input, select {
 input:focus, select:focus {
     outline: none;
     border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    box-shadow: 0 0 0 3px rgba(245, 188, 0, 0.2);
 }
 
 input::placeholder {

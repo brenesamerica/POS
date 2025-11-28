@@ -493,37 +493,59 @@
 
         {% if active_session %}
         <div class="columns">
-            <!-- Left Column: Add Items -->
+            <!-- Left Column: Add Packaged Items -->
             <div class="left-column">
                 <div class="add-item-form">
-                    <h3 data-i18n="addProductToMarket">Add Product to Market</h3>
+                    <h3 data-i18n="addProductToMarket">Add Packaged Product to Market</h3>
 
                     <div class="filter-section">
-                        <label for="categoryFilter" data-i18n="filterByCategory">Filter by Category:</label>
-                        <select id="categoryFilter" onchange="filterItems()">
-                            <option value="all" data-i18n="allCategories">All Categories</option>
-                            {% for category in categories %}
-                                {% if not category[2] %}
-                                <option value="{{ category[0] }}">{{ category[1] }}</option>
-                                {% endif %}
-                            {% endfor %}
+                        <label for="packageFilter" data-i18n="filterBySize">Filter by Size:</label>
+                        <select id="packageFilter" onchange="filterPackages()">
+                            <option value="all" data-i18n="allSizes">All Sizes</option>
+                            <option value="whole_bean_250">250g</option>
+                            <option value="whole_bean_70">70g</option>
+                            <option value="whole_bean_16">16g</option>
+                            <option value="drip_11">Drip 11g</option>
                         </select>
                     </div>
 
-                    <label for="itemSelect" data-i18n="selectProduct">Select Product:</label>
+                    <label for="packageSelect" data-i18n="selectPackage">Select Package:</label>
                     <div id="itemSelect">
-                        {% for item in items %}
-                        <div class="item-option" data-id="{{ item[0] }}" data-name="{{ item[1] }}" data-price="{{ item[2] }}" data-category="{{ item[4] }}" onclick="selectItem(this)">
-                            {{ item[1] }} - {{ "%.0f"|format(item[2]) }} HUF
+                        {% if packaged_products %}
+                        {% for pkg in packaged_products %}
+                        <div class="item-option package-option"
+                             data-id="{{ pkg.id }}"
+                             data-lot="{{ pkg.production_lot }}"
+                             data-qty="{{ pkg.quantity }}"
+                             data-type="{{ pkg.production_type }}"
+                             data-size="{{ pkg.package_size_g }}"
+                             data-name="{{ pkg.product_name }}"
+                             data-roast="{{ pkg.roast_level }}"
+                             onclick="selectPackage(this)">
+                            <strong>{{ pkg.product_name }}</strong> ({{ pkg.package_size_g }}g)
+                            <br>
+                            <small style="color: var(--gray-500);">
+                                LOT: {{ pkg.production_lot }} | {{ pkg.quantity }} pkg available
+                                {% if pkg.roast_level == 'V' %}<span style="color: #eed25f;">●</span>{% endif %}
+                                {% if pkg.roast_level == 'K' %}<span style="color: #cd9a59;">●</span>{% endif %}
+                                {% if pkg.roast_level == 'S' %}<span style="color: #794f2b;">●</span>{% endif %}
+                            </small>
                         </div>
                         {% endfor %}
+                        {% else %}
+                        <div style="padding: 20px; text-align: center; color: var(--gray-500);">
+                            No packaged products available.<br>
+                            <small><a href="{{ url_for('roast_tracker.production') }}">Go to Production</a> to package some coffee first.</small>
+                        </div>
+                        {% endif %}
                     </div>
 
                     <label for="lotNumber" data-i18n="lotNumber">LOT Number:</label>
-                    <input type="text" id="lotNumber" data-i18n-placeholder="lotNumberPlaceholder" placeholder="e.g., 2025-11-27" required>
+                    <input type="text" id="lotNumber" readonly style="background: var(--gray-100);" data-i18n-placeholder="lotNumberPlaceholder" placeholder="Auto-filled from package">
 
-                    <label for="quantity" data-i18n="quantity">Quantity:</label>
+                    <label for="quantity" data-i18n="quantity">Quantity (packages):</label>
                     <input type="number" id="quantity" value="1" min="1" required>
+                    <small id="quantityHint" style="color: var(--gray-500); display: block; margin-top: 4px;"></small>
 
                     <button onclick="addItem()" id="addItemBtn" disabled data-i18n="addToMarketList">Add to Market List</button>
                 </div>
@@ -573,30 +595,54 @@
     </div>
 
     <script>
-        let selectedItemId = null;
-        let selectedItemName = null;
+        let selectedPackageId = null;
+        let selectedPackageLot = null;
+        let selectedPackageName = null;
+        let selectedPackageQty = 0;
 
-        function selectItem(element) {
+        function selectPackage(element) {
             // Remove selection from others
-            document.querySelectorAll('.item-option').forEach(el => el.classList.remove('selected'));
+            document.querySelectorAll('.package-option').forEach(el => el.classList.remove('selected'));
             // Select this one
             element.classList.add('selected');
-            selectedItemId = element.dataset.id;
-            selectedItemName = element.dataset.name;
+            selectedPackageId = element.dataset.id;
+            selectedPackageLot = element.dataset.lot;
+            selectedPackageName = element.dataset.name;
+            selectedPackageQty = parseInt(element.dataset.qty);
+
+            // Auto-fill LOT
+            document.getElementById('lotNumber').value = selectedPackageLot;
+
+            // Show quantity hint
+            document.getElementById('quantityHint').textContent =
+                `Max available: ${selectedPackageQty} packages`;
+
+            // Set max on quantity input
+            document.getElementById('quantity').max = selectedPackageQty;
+            document.getElementById('quantity').value = Math.min(1, selectedPackageQty);
+
             document.getElementById('addItemBtn').disabled = false;
         }
 
-        function filterItems() {
-            const categoryId = document.getElementById('categoryFilter').value;
-            const items = document.querySelectorAll('.item-option');
+        function filterPackages() {
+            const typeFilter = document.getElementById('packageFilter').value;
+            const packages = document.querySelectorAll('.package-option');
 
-            items.forEach(item => {
-                if (categoryId === 'all' || item.dataset.category === categoryId) {
-                    item.style.display = 'block';
+            packages.forEach(pkg => {
+                if (typeFilter === 'all' || pkg.dataset.type === typeFilter) {
+                    pkg.style.display = 'block';
                 } else {
-                    item.style.display = 'none';
+                    pkg.style.display = 'none';
                 }
             });
+        }
+
+        // Legacy function for backwards compatibility
+        function selectItem(element) {
+            selectPackage(element);
+        }
+        function filterItems() {
+            filterPackages();
         }
 
         function createSession() {
@@ -697,24 +743,29 @@
         }
 
         function addItem() {
-            if (!selectedItemId) {
-                alert('Please select a product');
+            if (!selectedPackageId) {
+                alert('Please select a package');
                 return;
             }
 
             const lotNumber = document.getElementById('lotNumber').value;
             if (!lotNumber) {
-                alert('Please enter a LOT number');
+                alert('Please select a package to auto-fill LOT');
                 return;
             }
 
-            const quantity = document.getElementById('quantity').value;
+            const quantity = parseInt(document.getElementById('quantity').value);
+            if (quantity > selectedPackageQty) {
+                alert(`Only ${selectedPackageQty} packages available`);
+                return;
+            }
 
             fetch('/add_market_item', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    item_id: selectedItemId,
+                    production_batch_id: selectedPackageId,
+                    product_name: selectedPackageName,
                     lot_number: lotNumber,
                     quantity: quantity
                 })

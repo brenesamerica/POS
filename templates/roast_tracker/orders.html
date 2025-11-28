@@ -1,0 +1,645 @@
+{% extends "roast_tracker/base.html" %}
+
+{% block title %}Orders{% endblock %}
+
+{% block extra_css %}
+<style>
+    .order-card {
+        background: white;
+        border: 1px solid var(--gray-200);
+        border-radius: var(--radius);
+        margin-bottom: 16px;
+        overflow: hidden;
+    }
+
+    .order-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px;
+        background: var(--gray-50);
+        border-bottom: 1px solid var(--gray-200);
+    }
+
+    .order-number {
+        font-weight: 600;
+        font-size: 1.1rem;
+    }
+
+    .order-customer {
+        color: var(--gray-600);
+        font-size: 0.9rem;
+    }
+
+    .order-date {
+        color: var(--gray-500);
+        font-size: 0.85rem;
+    }
+
+    .order-total {
+        font-weight: 600;
+        font-size: 1.1rem;
+    }
+
+    .fulfillment-badge {
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: 500;
+    }
+
+    .fulfillment-badge.ready {
+        background: rgba(34, 197, 94, 0.1);
+        color: #16a34a;
+    }
+
+    .fulfillment-badge.incomplete {
+        background: rgba(239, 68, 68, 0.1);
+        color: #dc2626;
+    }
+
+    .order-items {
+        padding: 16px;
+    }
+
+    .order-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--gray-100);
+    }
+
+    .order-item:last-child {
+        border-bottom: none;
+    }
+
+    .item-name {
+        flex: 1;
+    }
+
+    .item-qty {
+        color: var(--gray-500);
+        font-size: 0.9rem;
+        margin-left: 12px;
+    }
+
+    .item-status {
+        padding: 2px 8px;
+        border-radius: 8px;
+        font-size: 0.75rem;
+        margin-left: 12px;
+    }
+
+    .item-status.packaged {
+        background: rgba(34, 197, 94, 0.1);
+        color: #16a34a;
+    }
+
+    .item-status.needs_packaging {
+        background: rgba(234, 179, 8, 0.1);
+        color: #ca8a04;
+    }
+
+    .item-status.needs_roasting {
+        background: rgba(239, 68, 68, 0.1);
+        color: #dc2626;
+    }
+
+    .missing-alert {
+        padding: 12px 16px;
+        background: rgba(239, 68, 68, 0.05);
+        border-top: 1px solid rgba(239, 68, 68, 0.2);
+        color: #dc2626;
+        font-size: 0.85rem;
+    }
+
+    .suggestions-card {
+        background: rgba(59, 130, 246, 0.05);
+        border: 1px solid rgba(59, 130, 246, 0.2);
+    }
+
+    .suggestion-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--gray-100);
+    }
+
+    .suggestion-item:last-child {
+        border-bottom: none;
+    }
+
+    .no-orders {
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--gray-500);
+    }
+
+    .no-orders .icon {
+        font-size: 48px;
+        margin-bottom: 16px;
+    }
+
+    .wc-status-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 8px;
+        font-size: 0.7rem;
+        font-weight: 500;
+        margin-right: 8px;
+        text-transform: capitalize;
+    }
+
+    .wc-status-badge.processing {
+        background: rgba(59, 130, 246, 0.1);
+        color: #2563eb;
+    }
+
+    .wc-status-badge.completed {
+        background: rgba(34, 197, 94, 0.1);
+        color: #16a34a;
+    }
+
+    .wc-status-badge.cancelled, .wc-status-badge.failed, .wc-status-badge.refunded {
+        background: rgba(239, 68, 68, 0.1);
+        color: #dc2626;
+    }
+
+    .wc-status-badge.on-hold, .wc-status-badge.pending {
+        background: rgba(234, 179, 8, 0.1);
+        color: #ca8a04;
+    }
+
+    .lot-selection {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-left: 12px;
+    }
+
+    .lot-select {
+        padding: 4px 8px;
+        font-size: 0.8rem;
+        border: 1px solid var(--gray-300);
+        border-radius: 4px;
+        min-width: 140px;
+    }
+
+    .lot-select.assigned {
+        border-color: #16a34a;
+        background: rgba(34, 197, 94, 0.05);
+    }
+
+    .lot-label {
+        font-size: 0.7rem;
+        color: var(--gray-500);
+        margin-right: 4px;
+    }
+
+    .order-item-row {
+        display: flex;
+        flex-direction: column;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--gray-100);
+    }
+
+    .order-item-row:last-child {
+        border-bottom: none;
+    }
+
+    .order-item-main {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .order-item-lots {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 8px;
+        padding-left: 16px;
+    }
+
+    .lot-slot {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        background: var(--gray-50);
+        padding: 4px 8px;
+        border-radius: 4px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>WooCommerce Orders</h1>
+    <div>
+        <button class="btn btn-secondary" onclick="analyzeOrders()">Analyze & Plan</button>
+        <a href="{{ url_for('roast_tracker.roast_plan') }}" class="btn btn-primary">View Roast Plan</a>
+    </div>
+</div>
+
+<div class="page-content">
+    <!-- Stats -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="value">{{ orders|length }}</div>
+            <div class="label">Processing Orders</div>
+        </div>
+        <div class="stat-card">
+            <div class="value">{{ orders|selectattr('fulfillment_status', 'equalto', 'ready')|list|length }}</div>
+            <div class="label">Ready to Ship</div>
+        </div>
+        <div class="stat-card">
+            <div class="value">{{ orders|selectattr('fulfillment_status', 'equalto', 'incomplete')|list|length }}</div>
+            <div class="label">Need Attention</div>
+        </div>
+    </div>
+
+    <!-- Suggestions Panel (hidden by default) -->
+    <div id="suggestionsPanel" class="card suggestions-card" style="display: none;">
+        <div class="card-header">
+            <h2 class="card-title">Roast Plan Suggestions</h2>
+            <button class="btn btn-secondary" onclick="addAllToplan()">Add All to Plan</button>
+        </div>
+        <div id="suggestionsList"></div>
+    </div>
+
+    <!-- Orders List -->
+    {% if orders %}
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Processing Orders</h2>
+        </div>
+
+        {% for order in orders %}
+        <div class="order-card" data-order-id="{{ order.id }}">
+            <div class="order-header">
+                <div>
+                    <div class="order-number">#{{ order.number }}</div>
+                    <div class="order-customer">
+                        {{ order.billing.first_name }} {{ order.billing.last_name }}
+                        {% if order.shipping.country %} ({{ order.shipping.country }}){% endif %}
+                    </div>
+                    <div class="order-date">{{ order.date_created[:10] }}</div>
+                </div>
+                <div style="text-align: right;">
+                    <div class="order-total">{{ order.total }} {{ order.currency }}</div>
+                    <span class="wc-status-badge {{ order.status }}">{{ order.status }}</span>
+                    <span class="fulfillment-badge {{ order.fulfillment_status }}">
+                        {% if order.fulfillment_status == 'ready' %}Ready to Ship{% else %}Incomplete{% endif %}
+                    </span>
+                </div>
+            </div>
+
+            <div class="order-items">
+                {% for item in order.line_items %}
+                {% set item_weight = 250 %}
+                {% if '500' in item.name %}{% set item_weight = 500 %}{% endif %}
+                {% set slots_needed = (item_weight / 250)|int * item.quantity %}
+                <div class="order-item-row" data-order-id="{{ order.id }}" data-item-id="{{ item.id }}">
+                    <div class="order-item-main">
+                        <span class="item-name">{{ item.name }}</span>
+                        <div style="display: flex; align-items: center;">
+                            <span class="item-qty">x{{ item.quantity }}</span>
+                            <span class="item-status {{ item.fulfillment|default('unknown') }}">
+                                {% if item.fulfillment == 'packaged' %}Packaged
+                                {% elif item.fulfillment == 'needs_packaging' %}Needs Packaging
+                                {% elif item.fulfillment == 'needs_roasting' %}Needs Roasting
+                                {% else %}Unknown{% endif %}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="order-item-lots">
+                        {% for slot in range(1, slots_needed + 1) %}
+                        <div class="lot-slot">
+                            <span class="lot-label">LOT {{ slot }}:</span>
+                            <select class="lot-select"
+                                    data-order-id="{{ order.id }}"
+                                    data-item-id="{{ item.id }}"
+                                    data-slot="{{ slot }}"
+                                    onchange="assignLot(this)">
+                                <option value="">Select LOT...</option>
+                            </select>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            {% if order.missing_items %}
+            <div class="missing-alert">
+                Missing: {{ order.missing_items|join(', ') }}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="no-orders">
+            <div class="icon">&#10004;</div>
+            <h3>No Processing Orders</h3>
+            <p>All orders have been fulfilled or there are no new orders.</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let suggestions = [];
+    let availableLots = [];
+    const orderIds = {{ orders|map(attribute='id')|list|tojson }};
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', async () => {
+        // Load available LOTs first
+        await loadAvailableLots();
+
+        // Populate all LOT select dropdowns
+        populateLotSelects();
+
+        // Load existing assignments for all orders
+        for (const orderId of orderIds) {
+            await loadOrderAssignments(orderId);
+        }
+
+        // Refresh order statuses
+        if (orderIds.length > 0) {
+            await refreshOrderStatuses();
+        }
+    });
+
+    async function loadAvailableLots() {
+        try {
+            const response = await fetch('{{ url_for("roast_tracker.api_available_lots") }}');
+            const data = await response.json();
+            if (data.status === 'success') {
+                availableLots = data.lots;
+            }
+        } catch (error) {
+            console.error('Error loading available lots:', error);
+        }
+    }
+
+    function populateLotSelects() {
+        const selects = document.querySelectorAll('.lot-select');
+        selects.forEach(select => {
+            // Keep the default empty option
+            let html = '<option value="">Select LOT...</option>';
+            availableLots.forEach(lot => {
+                html += `<option value="${lot.id}">${lot.lot_number} - ${lot.product_name} (${lot.available_weight_g}g)</option>`;
+            });
+            select.innerHTML = html;
+        });
+    }
+
+    async function loadOrderAssignments(orderId) {
+        try {
+            const response = await fetch(`{{ url_for("roast_tracker.api_get_order_lot_assignments", order_id=0) }}`.replace('/0', `/${orderId}`));
+            const data = await response.json();
+            if (data.status === 'success') {
+                data.assignments.forEach(assignment => {
+                    const select = document.querySelector(
+                        `.lot-select[data-order-id="${assignment.wc_order_id}"][data-item-id="${assignment.wc_order_item_id}"][data-slot="${assignment.slot_number}"]`
+                    );
+                    if (select) {
+                        select.value = assignment.roast_batch_id;
+                        select.classList.add('assigned');
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Error loading order assignments:', error);
+        }
+    }
+
+    async function assignLot(selectElement) {
+        const orderId = selectElement.dataset.orderId;
+        const itemId = selectElement.dataset.itemId;
+        const slot = selectElement.dataset.slot;
+        const batchId = selectElement.value;
+
+        if (!batchId) {
+            // Remove assignment
+            try {
+                await fetch('{{ url_for("roast_tracker.api_remove_lot_assignment") }}', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        order_id: parseInt(orderId),
+                        order_item_id: parseInt(itemId),
+                        slot_number: parseInt(slot)
+                    })
+                });
+                selectElement.classList.remove('assigned');
+            } catch (error) {
+                console.error('Error removing assignment:', error);
+            }
+            return;
+        }
+
+        try {
+            const response = await fetch('{{ url_for("roast_tracker.api_assign_lot") }}', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    order_id: parseInt(orderId),
+                    order_item_id: parseInt(itemId),
+                    slot_number: parseInt(slot),
+                    batch_id: parseInt(batchId),
+                    weight_g: 250
+                })
+            });
+
+            const data = await response.json();
+            if (data.status === 'success') {
+                selectElement.classList.add('assigned');
+            } else {
+                alert('Error: ' + (data.message || 'Unknown error'));
+                selectElement.value = '';
+            }
+        } catch (error) {
+            console.error('Error assigning lot:', error);
+            alert('Error assigning LOT');
+            selectElement.value = '';
+        }
+    }
+
+    async function refreshOrderStatuses() {
+        try {
+            const response = await fetch('{{ url_for("roast_tracker.api_refresh_order_statuses") }}', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ order_ids: orderIds })
+            });
+
+            const data = await response.json();
+            if (data.status === 'success') {
+                // Update status badges without removing orders
+                for (const [orderId, status] of Object.entries(data.order_statuses)) {
+                    const orderCard = document.querySelector(`[data-order-id="${orderId}"]`);
+                    if (orderCard) {
+                        const statusBadge = orderCard.querySelector('.wc-status-badge');
+                        if (statusBadge) {
+                            statusBadge.textContent = status;
+                            statusBadge.className = `wc-status-badge ${status}`;
+                            // Mark completed/cancelled orders visually
+                            if (status === 'completed' || status === 'cancelled') {
+                                orderCard.style.opacity = '0.6';
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error refreshing statuses:', error);
+        }
+    }
+
+    async function analyzeOrders() {
+        const btn = event.target;
+        btn.disabled = true;
+        btn.textContent = 'Analyzing...';
+
+        try {
+            const response = await fetch('{{ url_for("roast_tracker.api_analyze_orders") }}', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'}
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                suggestions = data.suggestions;
+                displaySuggestions(data.suggestions);
+            } else {
+                alert('Error analyzing orders');
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Analyze & Plan';
+        }
+    }
+
+    function displaySuggestions(suggestions) {
+        const panel = document.getElementById('suggestionsPanel');
+        const list = document.getElementById('suggestionsList');
+
+        if (suggestions.length === 0) {
+            list.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--gray-500);">No roasting needed - all orders can be fulfilled and stock is adequate!</div>';
+        } else {
+            let html = '<div style="padding: 16px;">';
+            suggestions.forEach((s, idx) => {
+                const reasonBadge = s.reason === 'order_need'
+                    ? '<span style="background: rgba(59, 130, 246, 0.1); color: #2563eb; padding: 2px 8px; border-radius: 8px; font-size: 0.7rem; margin-left: 8px;">Order Need</span>'
+                    : '<span style="background: rgba(239, 68, 68, 0.1); color: #dc2626; padding: 2px 8px; border-radius: 8px; font-size: 0.7rem; margin-left: 8px;">Low Stock</span>';
+                html += `
+                    <div class="suggestion-item">
+                        <div>
+                            <strong>${s.product_name}</strong>${reasonBadge}<br>
+                            <span style="font-size: 0.85rem; color: var(--gray-500);">
+                                Need: ${s.needed_g}g | Available: ${s.available_g}g | Shortfall: ${s.shortfall_g}g
+                            </span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="number" id="weight_${idx}" value="${Math.round(s.suggested_roast_g)}"
+                                   style="width: 80px; padding: 4px 8px;" min="100" step="50">g
+                            <button class="btn btn-secondary" onclick="addToPlan(${s.product_id}, ${idx})"
+                                    style="padding: 4px 12px;" id="addBtn_${idx}">Add</button>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            list.innerHTML = html;
+        }
+
+        panel.style.display = 'block';
+    }
+
+    async function addToPlan(productId, idx) {
+        const weight = document.getElementById(`weight_${idx}`).value;
+        const btn = document.getElementById(`addBtn_${idx}`);
+
+        try {
+            const response = await fetch('{{ url_for("roast_tracker.api_add_to_plan") }}', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    product_id: productId,
+                    planned_weight_g: parseInt(weight),
+                    source: 'order_analysis'
+                })
+            });
+
+            const data = await response.json();
+            if (data.status === 'success') {
+                btn.textContent = 'Added!';
+                btn.disabled = true;
+                btn.style.background = '#16a34a';
+                btn.style.color = 'white';
+            } else {
+                alert('Error: ' + (data.message || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
+    async function addAllToplan() {
+        if (suggestions.length === 0) {
+            alert('No suggestions to add. Click "Analyze & Plan" first.');
+            return;
+        }
+
+        const btn = event.target;
+        btn.disabled = true;
+        btn.textContent = 'Adding...';
+
+        let addedCount = 0;
+        for (let idx = 0; idx < suggestions.length; idx++) {
+            const s = suggestions[idx];
+            const weight = document.getElementById(`weight_${idx}`).value;
+
+            try {
+                const response = await fetch('{{ url_for("roast_tracker.api_add_to_plan") }}', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        product_id: s.product_id,
+                        planned_weight_g: parseInt(weight),
+                        source: 'order_analysis'
+                    })
+                });
+
+                const data = await response.json();
+                if (data.status === 'success') {
+                    addedCount++;
+                    const addBtn = document.getElementById(`addBtn_${idx}`);
+                    if (addBtn) {
+                        addBtn.textContent = 'Added!';
+                        addBtn.disabled = true;
+                        addBtn.style.background = '#16a34a';
+                        addBtn.style.color = 'white';
+                    }
+                }
+            } catch (error) {
+                console.error(`Error adding product ${s.product_id}:`, error);
+            }
+        }
+
+        alert(`Added ${addedCount} items to roast plan!`);
+        window.location.href = '{{ url_for("roast_tracker.roast_plan") }}';
+    }
+</script>
+{% endblock %}
