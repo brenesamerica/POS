@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit User - Cafe Tiko POS</title>
+    <link rel="icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-32x32.png" sizes="32x32">
+    <link rel="icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-192x192.png" sizes="192x192">
+    <link rel="apple-touch-icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-180x180.png">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        .env-indicator {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 4px 12px;
+            text-align: center;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            z-index: 1001;
+        }
+        .env-indicator.test {
+            background: var(--warning);
+            color: var(--gray-900);
+        }
+        .env-indicator.prod {
+            background: var(--danger);
+            color: white;
+        }
+        .top-nav {
+            position: fixed;
+            top: 28px;
+            left: 0;
+            right: 0;
+            background: white;
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: var(--shadow-md);
+            z-index: 100;
+        }
+        .top-nav .nav-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: var(--gray-800);
+        }
+        .top-nav .nav-btn {
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--gray-100);
+            color: var(--gray-700);
+            border: 1px solid var(--gray-200);
+        }
+        .top-nav .nav-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow);
+        }
+        body {
+            padding-top: 98px;
+        }
+        .container {
+            margin-top: 20px;
+            max-width: 500px;
+        }
+        .form-card {
+            background: white;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 500;
+            color: var(--gray-700);
+        }
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        .form-group input:disabled {
+            background: var(--gray-100);
+            color: var(--gray-500);
+        }
+        .form-group .help-text {
+            font-size: 0.8rem;
+            color: var(--gray-500);
+            margin-top: 4px;
+        }
+        .submit-btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+        .error-message {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: var(--danger);
+            padding: 12px 16px;
+            border-radius: var(--radius-sm);
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+        }
+        .section-divider {
+            border-top: 1px solid var(--gray-200);
+            margin: 24px 0;
+            position: relative;
+        }
+        .section-divider span {
+            position: absolute;
+            top: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 0 12px;
+            font-size: 0.8rem;
+            color: var(--gray-500);
+        }
+        @media (max-width: 768px) {
+            body {
+                padding-top: 90px;
+            }
+            .top-nav {
+                padding: 10px 16px;
+            }
+            .form-card {
+                padding: 20px;
+            }
+            .form-group input,
+            .form-group select {
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="env-indicator {{ 'test' if billingo_env == 'test' else 'prod' }}">
+        {% if billingo_env == 'test' %}
+            TESZT kornyezet
+        {% else %}
+            Elo rendszer
+        {% endif %}
+    </div>
+
+    <nav class="top-nav">
+        <span class="nav-title">Edit User: {{ user[1] }}</span>
+        <a href="{{ url_for('manage_users') }}" class="nav-btn">Cancel</a>
+    </nav>
+
+    <div class="container">
+        <div class="form-card">
+            {% if error %}
+            <div class="error-message">
+                {{ error }}
+            </div>
+            {% endif %}
+
+            <form method="POST">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" value="{{ user[1] }}" disabled>
+                </div>
+                <div class="form-group">
+                    <label for="role">Role</label>
+                    <select id="role" name="role">
+                        <option value="user" {% if user[2] == 'user' %}selected{% endif %}>User</option>
+                        <option value="admin" {% if user[2] == 'admin' %}selected{% endif %}>Admin</option>
+                    </select>
+                </div>
+
+                <div class="section-divider">
+                    <span>Change Password (Optional)</span>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">New Password</label>
+                    <input type="password" id="password" name="password" autocomplete="new-password">
+                    <p class="help-text">Leave blank to keep current password</p>
+                </div>
+                <div class="form-group">
+                    <label for="confirm_password">Confirm New Password</label>
+                    <input type="password" id="confirm_password" name="confirm_password" autocomplete="new-password">
+                </div>
+                <button type="submit" class="submit-btn">Save Changes</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

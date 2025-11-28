@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Users - Cafe Tiko POS</title>
+    <link rel="icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-32x32.png" sizes="32x32">
+    <link rel="icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-192x192.png" sizes="192x192">
+    <link rel="apple-touch-icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-180x180.png">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        .env-indicator {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 4px 12px;
+            text-align: center;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            z-index: 1001;
+        }
+        .env-indicator.test {
+            background: var(--warning);
+            color: var(--gray-900);
+        }
+        .env-indicator.prod {
+            background: var(--danger);
+            color: white;
+        }
+        .top-nav {
+            position: fixed;
+            top: 28px;
+            left: 0;
+            right: 0;
+            background: white;
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: var(--shadow-md);
+            z-index: 100;
+        }
+        .top-nav .nav-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: var(--gray-800);
+        }
+        .top-nav .nav-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .top-nav .nav-btn {
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border: none;
+        }
+        .top-nav .nav-btn.secondary {
+            background: var(--gray-100);
+            color: var(--gray-700);
+            border: 1px solid var(--gray-200);
+        }
+        .top-nav .nav-btn.primary {
+            background: var(--primary);
+            color: white;
+        }
+        .top-nav .nav-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow);
+        }
+        body {
+            padding-top: 98px;
+        }
+        .container {
+            margin-top: 20px;
+        }
+        .users-table {
+            width: 100%;
+            background: white;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+        .users-table th,
+        .users-table td {
+            padding: 14px 20px;
+            text-align: left;
+            border-bottom: 1px solid var(--gray-100);
+        }
+        .users-table th {
+            background: var(--gray-50);
+            font-weight: 600;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--gray-600);
+        }
+        .users-table tr:hover {
+            background: var(--gray-50);
+        }
+        .role-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .role-badge.admin {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+        }
+        .role-badge.user {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+        .action-btn {
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            border: none;
+            margin-right: 6px;
+        }
+        .action-btn.edit {
+            background: var(--gray-100);
+            color: var(--gray-700);
+        }
+        .action-btn.delete {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+        }
+        .action-btn:hover {
+            transform: translateY(-1px);
+        }
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--gray-500);
+        }
+        @media (max-width: 768px) {
+            body {
+                padding-top: 90px;
+            }
+            .top-nav {
+                padding: 10px 16px;
+            }
+            .users-table th,
+            .users-table td {
+                padding: 10px 12px;
+                font-size: 0.85rem;
+            }
+            .users-table th:nth-child(4),
+            .users-table td:nth-child(4),
+            .users-table th:nth-child(5),
+            .users-table td:nth-child(5) {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="env-indicator {{ 'test' if billingo_env == 'test' else 'prod' }}">
+        {% if billingo_env == 'test' %}
+            TESZT kornyezet
+        {% else %}
+            Elo rendszer
+        {% endif %}
+    </div>
+
+    <nav class="top-nav">
+        <span class="nav-title">Manage Users</span>
+        <div class="nav-actions">
+            <a href="{{ url_for('main_menu') }}" class="nav-btn secondary">Back to Menu</a>
+            <a href="{{ url_for('add_user') }}" class="nav-btn primary">+ Add User</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        {% if users %}
+        <table class="users-table">
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Role</th>
+                    <th>Created</th>
+                    <th>Last Login</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td><strong>{{ user[1] }}</strong></td>
+                    <td>
+                        <span class="role-badge {{ user[2] }}">{{ user[2]|upper }}</span>
+                    </td>
+                    <td>{{ user[3][:16] if user[3] else '-' }}</td>
+                    <td>{{ user[4][:16] if user[4] else 'Never' }}</td>
+                    <td>
+                        <a href="{{ url_for('edit_user', id=user[0]) }}" class="action-btn edit">Edit</a>
+                        {% if user[1] != current_user %}
+                        <button onclick="deleteUser({{ user[0] }}, '{{ user[1] }}')" class="action-btn delete">Delete</button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <h3>No users found</h3>
+            <p>Add your first user to get started.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        function deleteUser(id, username) {
+            if (!confirm(`Are you sure you want to delete user "${username}"?`)) {
+                return;
+            }
+
+            fetch(`/delete_user/${id}`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        location.reload();
+                    } else {
+                        alert('Error: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    alert('Error deleting user');
+                    console.error(error);
+                });
+        }
+    </script>
+</body>
+</html>
