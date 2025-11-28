@@ -3,8 +3,14 @@ Database setup and utilities for Roast Tracker
 """
 import sqlite3
 import os
+import logging
 
-DATABASE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'roast_tracker.db')
+# Use environment variable to determine test vs prod database
+BILLINGO_ENV = os.environ.get("BILLINGO_ENV", "test")  # Default to test for safety
+DATABASE_NAME = 'roast_tracker_test.db' if BILLINGO_ENV == 'test' else 'roast_tracker_prod.db'
+DATABASE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), DATABASE_NAME)
+
+logging.info(f"Roast Tracker using database: {DATABASE_NAME}")
 
 
 def get_db():

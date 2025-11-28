@@ -19,3 +19,9 @@ __pycache__/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Databases (environment-specific data)
+*.db
+
+# Visual Studio
+.vs/
