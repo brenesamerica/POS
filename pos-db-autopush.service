@@ -1,0 +1,12 @@
+[Unit]
+Description=POS Database Auto-Push to Git
+After=network.target
+
+[Service]
+Type=oneshot
+User=brenesamerica
+WorkingDirectory=/home/brenesamerica/POS
+ExecStart=/home/brenesamerica/POS/auto-push-db.sh
+
+StandardOutput=journal
+StandardError=journal

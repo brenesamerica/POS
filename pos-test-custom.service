@@ -1,0 +1,23 @@
+[Unit]
+Description=Café Tiko POS - Test
+After=network.target
+
+[Service]
+Type=simple
+User=brenesamerica
+WorkingDirectory=/home/brenesamerica/POS
+Environment="PATH=/home/brenesamerica/POS/env/bin"
+Environment="BILLINGO_ENV=test"
+Environment="FLASK_SECRET_KEY=change-this-to-secure-key-test"
+ExecStart=/home/brenesamerica/POS/env/bin/gunicorn --bind 0.0.0.0:5001 --workers 2 --threads 4 --timeout 120 app:app
+Restart=always
+RestartSec=5
+
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

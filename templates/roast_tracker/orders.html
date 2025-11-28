@@ -260,6 +260,42 @@
         </div>
     </div>
 
+    <!-- Order Summary -->
+    {% if order_summary %}
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Order Summary</h2>
+        </div>
+        <div style="padding: 16px;">
+            <table style="width: 100%;">
+                <thead>
+                    <tr>
+                        <th style="text-align: left;">Product</th>
+                        <th style="text-align: right;">Quantity</th>
+                        <th style="text-align: right;">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in order_summary %}
+                    <tr>
+                        <td>{{ item.name }}</td>
+                        <td style="text-align: right; font-weight: 600;">{{ item.display }}</td>
+                        <td style="text-align: right; color: var(--gray-500);">{{ item.total_g }}g</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr style="border-top: 2px solid var(--gray-300);">
+                        <td style="font-weight: 600;">Total</td>
+                        <td style="text-align: right; font-weight: 600;">{{ order_summary|sum(attribute='total_g') // 250 }}x250g</td>
+                        <td style="text-align: right; font-weight: 600;">{{ order_summary|sum(attribute='total_g') }}g</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Suggestions Panel (hidden by default) -->
     <div id="suggestionsPanel" class="card suggestions-card" style="display: none;">
         <div class="card-header">
@@ -322,6 +358,7 @@
                                     data-order-id="{{ order.id }}"
                                     data-item-id="{{ item.id }}"
                                     data-slot="{{ slot }}"
+                                    data-item-name="{{ item.name|lower }}"
                                     onchange="assignLot(this)">
                                 <option value="">Select LOT...</option>
                             </select>
@@ -355,13 +392,13 @@
 {% block extra_js %}
 <script>
     let suggestions = [];
-    let availableLots = [];
+    let availablePackedLots = [];
     const orderIds = {{ orders|map(attribute='id')|list|tojson }};
 
     // Initialize on page load
     document.addEventListener('DOMContentLoaded', async () => {
-        // Load available LOTs first
-        await loadAvailableLots();
+        // Load available PACKED LOTs first (only packaged products can be shipped)
+        await loadAvailablePackedLots();
 
         // Populate all LOT select dropdowns
         populateLotSelects();
@@ -377,25 +414,58 @@
         }
     });
 
-    async function loadAvailableLots() {
+    async function loadAvailablePackedLots() {
         try {
-            const response = await fetch('{{ url_for("roast_tracker.api_available_lots") }}');
+            const response = await fetch('{{ url_for("roast_tracker.api_available_packed_lots") }}');
             const data = await response.json();
             if (data.status === 'success') {
-                availableLots = data.lots;
+                availablePackedLots = data.lots;
             }
         } catch (error) {
-            console.error('Error loading available lots:', error);
+            console.error('Error loading available packed lots:', error);
         }
     }
 
     function populateLotSelects() {
         const selects = document.querySelectorAll('.lot-select');
         selects.forEach(select => {
+            const itemName = (select.dataset.itemName || '').toLowerCase().trim();
+
+            // Filter PACKED LOTs to only show those matching the order item
+            const matchingLots = availablePackedLots.filter(lot => {
+                // Normalize product name (trim spaces, lowercase)
+                const productName = (lot.product_name || '').toLowerCase().trim();
+                const country = (lot.country || '').toLowerCase().trim();
+                const roastLevel = (lot.roast_level || '').toLowerCase().trim();
+
+                // Skip if no product name
+                if (!productName) return false;
+
+                // Exact match: order item name should contain the full product name
+                const exactMatch = itemName.includes(productName);
+
+                // If exact match found, return true
+                if (exactMatch) return true;
+
+                // Fallback: try matching country + roast level for items that might use different naming
+                // e.g., "Ethiopia Medium 250g" should match a product from Ethiopia with roast level K
+                if (country && itemName.includes(country)) {
+                    const hasMatchingRoast =
+                        (roastLevel === 'v' && (itemName.includes(' v ') || itemName.includes(' v-') || itemName.endsWith(' v') || itemName.includes('vilá') || itemName.includes('light'))) ||
+                        (roastLevel === 'k' && (itemName.includes(' k ') || itemName.includes(' k-') || itemName.endsWith(' k') || itemName.includes('közép') || itemName.includes('medium'))) ||
+                        (roastLevel === 's' && (itemName.includes(' s ') || itemName.includes(' s-') || itemName.endsWith(' s') || itemName.includes('sötét') || itemName.includes('dark')));
+                    if (hasMatchingRoast) return true;
+                }
+
+                return false;
+            });
+
             // Keep the default empty option
-            let html = '<option value="">Select LOT...</option>';
-            availableLots.forEach(lot => {
-                html += `<option value="${lot.id}">${lot.lot_number} - ${lot.product_name} (${lot.available_weight_g}g)</option>`;
+            let html = '<option value="">Select packed LOT...</option>';
+            matchingLots.forEach(lot => {
+                const productNameTrimmed = (lot.product_name || '').trim();
+                const packageType = lot.production_type.replace('whole_bean_', '').replace('drip_', 'drip ');
+                html += `<option value="${lot.production_batch_id}">${lot.source_lot} - ${productNameTrimmed} (${lot.package_size_g}g × ${lot.available_quantity})</option>`;
             });
             select.innerHTML = html;
         });
@@ -411,7 +481,7 @@
                         `.lot-select[data-order-id="${assignment.wc_order_id}"][data-item-id="${assignment.wc_order_item_id}"][data-slot="${assignment.slot_number}"]`
                     );
                     if (select) {
-                        select.value = assignment.roast_batch_id;
+                        select.value = assignment.production_batch_id;
                         select.classList.add('assigned');
                     }
                 });
@@ -425,9 +495,9 @@
         const orderId = selectElement.dataset.orderId;
         const itemId = selectElement.dataset.itemId;
         const slot = selectElement.dataset.slot;
-        const batchId = selectElement.value;
+        const productionBatchId = selectElement.value;
 
-        if (!batchId) {
+        if (!productionBatchId) {
             // Remove assignment
             try {
                 await fetch('{{ url_for("roast_tracker.api_remove_lot_assignment") }}', {
@@ -440,6 +510,13 @@
                     })
                 });
                 selectElement.classList.remove('assigned');
+                // Reload available packed LOTs to update stock numbers
+                await loadAvailablePackedLots();
+                populateLotSelects();
+                // Restore assignments after repopulating
+                for (const oid of orderIds) {
+                    await loadOrderAssignments(oid);
+                }
             } catch (error) {
                 console.error('Error removing assignment:', error);
             }
@@ -454,14 +531,20 @@
                     order_id: parseInt(orderId),
                     order_item_id: parseInt(itemId),
                     slot_number: parseInt(slot),
-                    batch_id: parseInt(batchId),
-                    weight_g: 250
+                    production_batch_id: parseInt(productionBatchId)
                 })
             });
 
             const data = await response.json();
             if (data.status === 'success') {
                 selectElement.classList.add('assigned');
+                // Reload available packed LOTs to update stock numbers
+                await loadAvailablePackedLots();
+                populateLotSelects();
+                // Restore assignments after repopulating
+                for (const oid of orderIds) {
+                    await loadOrderAssignments(oid);
+                }
             } else {
                 alert('Error: ' + (data.message || 'Unknown error'));
                 selectElement.value = '';

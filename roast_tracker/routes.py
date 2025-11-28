@@ -420,6 +420,22 @@ def inventory():
         ORDER BY pb.production_date DESC
     """)
 
+    # Packed products (ready to ship) - only show items with quantity > 0
+    packed_products = query_db("""
+        SELECT pb.id, pb.production_lot, pb.production_type, pb.package_size_g,
+               pb.quantity, pb.production_date,
+               rb.lot_number as source_lot, rb.roast_date,
+               cp.name as product_name, cp.roast_level, gc.country
+        FROM production_batches pb
+        JOIN production_sources ps ON pb.id = ps.production_batch_id
+        JOIN roast_batches rb ON ps.roast_batch_id = rb.id
+        JOIN coffee_products cp ON rb.product_id = cp.id
+        LEFT JOIN green_coffee gc ON cp.green_coffee_id = gc.id
+        WHERE pb.quantity > 0
+          AND pb.production_type IN ('whole_bean_250', 'whole_bean_70', 'whole_bean_16', 'drip_11')
+        ORDER BY cp.name, pb.package_size_g DESC, pb.production_date DESC
+    """)
+
     # All coffee products (offerings) with inventory summary
     products = query_db("""
         SELECT cp.*, gc.country, gc.name as green_name,
@@ -433,12 +449,63 @@ def inventory():
         ORDER BY gc.country, cp.name
     """)
 
+    # Get batches (LOTs) per product for display in cards
+    product_batches = {}
+    for product in products:
+        product_batches[product['id']] = query_db("""
+            SELECT id, lot_number, available_weight_g, roast_date
+            FROM roast_batches
+            WHERE product_id = ? AND available_weight_g > 0
+            ORDER BY roast_date DESC
+        """, (product['id'],))
+
     return render_template('roast_tracker/inventory.html',
                            batches=batches,
                            production=production,
+                           packed_products=packed_products,
                            products=products,
+                           product_batches=product_batches,
                            roast_levels=ROAST_LEVELS,
                            today=date.today().isoformat())
+
+
+@roast_tracker.route('/roast-history')
+@tracker_login_required
+def roast_history():
+    """View all roast batches history"""
+    # All batches
+    batches = query_db("""
+        SELECT rb.*, cp.name as product_name, gc.country,
+               (rb.roasted_weight_g - rb.available_weight_g) as used_weight_g
+        FROM roast_batches rb
+        JOIN coffee_products cp ON rb.product_id = cp.id
+        LEFT JOIN green_coffee gc ON cp.green_coffee_id = gc.id
+        ORDER BY rb.roast_date DESC
+    """)
+
+    # Get unique countries for filter
+    countries = query_db("""
+        SELECT DISTINCT gc.country
+        FROM roast_batches rb
+        JOIN coffee_products cp ON rb.product_id = cp.id
+        LEFT JOIN green_coffee gc ON cp.green_coffee_id = gc.id
+        WHERE gc.country IS NOT NULL
+        ORDER BY gc.country
+    """)
+    country_list = [c['country'] for c in countries if c['country']]
+
+    # Calculate totals
+    total_roasted = sum(b['roasted_weight_g'] for b in batches) if batches else 0
+    total_available = sum(b['available_weight_g'] for b in batches) if batches else 0
+    total_used = sum(b['used_weight_g'] for b in batches) if batches else 0
+
+    return render_template('roast_tracker/roast_history.html',
+                           batches=batches,
+                           countries=country_list,
+                           total_roasted_kg=total_roasted / 1000,
+                           total_available_kg=total_available / 1000,
+                           total_used_kg=total_used / 1000,
+                           roast_levels=ROAST_LEVELS)
 
 
 @roast_tracker.route('/batch/<int:batch_id>')
@@ -721,10 +788,42 @@ def orders():
                     order['fulfillment_status'] = 'incomplete'
                     order['missing_items'].append(item['name'])
 
+    # Calculate order summary - aggregate quantities per product (with 500g=2x250g logic)
+    order_summary = {}
+    for order in wc_orders:
+        for item in order['line_items']:
+            item_name = item['name']
+            item_qty = item['quantity']
+
+            # Determine unit size from item name
+            if '500' in item_name:
+                # 500g = 2x250g
+                unit_250g = 2 * item_qty
+            else:
+                # Default 250g
+                unit_250g = item_qty
+
+            if item_name not in order_summary:
+                order_summary[item_name] = {'total_qty': 0, 'total_250g': 0}
+            order_summary[item_name]['total_qty'] += item_qty
+            order_summary[item_name]['total_250g'] += unit_250g
+
+    # Format summary for display (e.g., "4x250g")
+    order_summary_formatted = []
+    for name, data in sorted(order_summary.items()):
+        qty_250g = data['total_250g']
+        if qty_250g > 0:
+            order_summary_formatted.append({
+                'name': name,
+                'display': f"{qty_250g}x250g",
+                'total_g': qty_250g * 250
+            })
+
     return render_template('roast_tracker/orders.html',
                            orders=wc_orders,
                            packaged=packaged,
-                           roasted=roasted)
+                           roasted=roasted,
+                           order_summary=order_summary_formatted)
 
 
 @roast_tracker.route('/advent-config', methods=['GET', 'POST'])
@@ -1191,6 +1290,85 @@ def api_adjust_inventory():
         conn.close()
 
 
+@roast_tracker.route('/api/adjust-batch-inventory', methods=['POST'])
+@tracker_login_required
+def api_adjust_batch_inventory():
+    """Adjust inventory for a specific batch/LOT"""
+    data = request.json
+    batch_id = data.get('batch_id')
+    adjustment_type = data.get('adjustment_type', 'set')  # add, subtract, set
+    amount_g = data.get('amount_g')
+    comment = data.get('comment', '').strip()
+
+    if not batch_id or amount_g is None:
+        return jsonify({'status': 'error', 'message': 'batch_id and amount_g are required'}), 400
+
+    if not comment:
+        return jsonify({'status': 'error', 'message': 'Comment is required for audit trail'}), 400
+
+    if adjustment_type not in ('add', 'subtract', 'set'):
+        return jsonify({'status': 'error', 'message': 'Invalid adjustment_type'}), 400
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    try:
+        # Get batch info
+        batch = cur.execute("""
+            SELECT rb.id, rb.product_id, rb.available_weight_g, rb.lot_number
+            FROM roast_batches rb
+            WHERE rb.id = ?
+        """, (batch_id,)).fetchone()
+
+        if not batch:
+            return jsonify({'status': 'error', 'message': 'Batch not found'}), 404
+
+        previous_weight = batch['available_weight_g']
+
+        # Calculate new weight
+        if adjustment_type == 'add':
+            new_weight = previous_weight + amount_g
+        elif adjustment_type == 'subtract':
+            new_weight = max(0, previous_weight - amount_g)
+        else:  # set
+            new_weight = amount_g
+
+        # Update batch
+        cur.execute("""
+            UPDATE roast_batches SET available_weight_g = ? WHERE id = ?
+        """, (new_weight, batch_id))
+
+        # Get product total for audit trail
+        result = cur.execute("""
+            SELECT COALESCE(SUM(available_weight_g), 0) as total
+            FROM roast_batches WHERE product_id = ?
+        """, (batch['product_id'],)).fetchone()
+        new_total = result['total']
+
+        # Record the adjustment in audit log
+        cur.execute("""
+            INSERT INTO inventory_adjustments
+            (product_id, batch_id, adjustment_type, amount_g, previous_total_g, new_total_g, comment)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (batch['product_id'], batch_id, adjustment_type, amount_g, previous_weight, new_weight,
+              f"[LOT {batch['lot_number']}] {comment}"))
+
+        conn.commit()
+
+        return jsonify({
+            'status': 'success',
+            'previous_weight_g': previous_weight,
+            'new_weight_g': new_weight,
+            'lot_number': batch['lot_number']
+        })
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        conn.close()
+
+
 @roast_tracker.route('/api/inventory-history/<int:product_id>')
 def api_inventory_history(product_id):
     """Get inventory adjustment history for a product"""
@@ -1233,10 +1411,12 @@ def api_all_inventory_history():
 def api_get_order_lot_assignments(order_id):
     """Get LOT assignments for an order"""
     assignments = query_db("""
-        SELECT ola.*, rb.lot_number, cp.name as product_name
+        SELECT ola.*, pb.production_lot, pb.production_type, pb.package_size_g,
+               rb.lot_number as source_lot, cp.name as product_name
         FROM order_lot_assignments ola
-        JOIN roast_batches rb ON ola.roast_batch_id = rb.id
-        JOIN coffee_products cp ON rb.product_id = cp.id
+        JOIN production_batches pb ON ola.production_batch_id = pb.id
+        LEFT JOIN roast_batches rb ON ola.roast_batch_id = rb.id
+        LEFT JOIN coffee_products cp ON rb.product_id = cp.id
         WHERE ola.wc_order_id = ?
         ORDER BY ola.wc_order_item_id, ola.slot_number
     """, (order_id,))
@@ -1250,16 +1430,15 @@ def api_get_order_lot_assignments(order_id):
 @roast_tracker.route('/api/assign-lot', methods=['POST'])
 @tracker_login_required
 def api_assign_lot():
-    """Assign a LOT to an order item slot"""
+    """Assign a packed LOT to an order item slot and reduce inventory"""
     data = request.json
     order_id = data.get('order_id')
     order_item_id = data.get('order_item_id')
     slot_number = data.get('slot_number', 1)
-    batch_id = data.get('batch_id')
-    weight_g = data.get('weight_g', 250)
+    production_batch_id = data.get('production_batch_id')
 
-    if not all([order_id, order_item_id, batch_id]):
-        return jsonify({'status': 'error', 'message': 'order_id, order_item_id, and batch_id are required'}), 400
+    if not all([order_id, order_item_id, production_batch_id]):
+        return jsonify({'status': 'error', 'message': 'order_id, order_item_id, and production_batch_id are required'}), 400
 
     conn = get_db()
     cur = conn.cursor()
@@ -1267,33 +1446,88 @@ def api_assign_lot():
     try:
         # Check if assignment already exists for this slot
         existing = cur.execute("""
-            SELECT id FROM order_lot_assignments
+            SELECT id, production_batch_id FROM order_lot_assignments
             WHERE wc_order_id = ? AND wc_order_item_id = ? AND slot_number = ?
         """, (order_id, order_item_id, slot_number)).fetchone()
 
+        # Check production batch has enough stock (at least 1 unit)
+        batch = cur.execute("""
+            SELECT pb.id, pb.production_lot, pb.quantity, pb.package_size_g,
+                   rb.id as roast_batch_id, rb.lot_number as source_lot
+            FROM production_batches pb
+            JOIN production_sources ps ON pb.id = ps.production_batch_id
+            JOIN roast_batches rb ON ps.roast_batch_id = rb.id
+            WHERE pb.id = ?
+        """, (production_batch_id,)).fetchone()
+
+        if not batch:
+            return jsonify({'status': 'error', 'message': 'Production batch not found'}), 404
+
         if existing:
+            # If changing to a different batch, restore stock to old batch first
+            if existing['production_batch_id'] != production_batch_id:
+                # Restore stock to old batch (add 1 unit back)
+                cur.execute("""
+                    UPDATE production_batches
+                    SET quantity = quantity + 1
+                    WHERE id = ?
+                """, (existing['production_batch_id'],))
+
+                # Check new batch has enough stock
+                if batch['quantity'] < 1:
+                    conn.rollback()
+                    return jsonify({
+                        'status': 'error',
+                        'message': f'No stock available. Remaining: {batch["quantity"]} units'
+                    }), 400
+
+                # Deduct from new batch (remove 1 unit)
+                cur.execute("""
+                    UPDATE production_batches
+                    SET quantity = quantity - 1
+                    WHERE id = ?
+                """, (production_batch_id,))
+
             # Update existing assignment
             cur.execute("""
                 UPDATE order_lot_assignments
-                SET roast_batch_id = ?, weight_g = ?, assigned_at = CURRENT_TIMESTAMP
+                SET production_batch_id = ?, roast_batch_id = ?, weight_g = ?, assigned_at = CURRENT_TIMESTAMP
                 WHERE id = ?
-            """, (batch_id, weight_g, existing['id']))
+            """, (production_batch_id, batch['roast_batch_id'], batch['package_size_g'], existing['id']))
         else:
+            # New assignment - check stock and deduct
+            if batch['quantity'] < 1:
+                return jsonify({
+                    'status': 'error',
+                    'message': f'No stock available. Remaining: {batch["quantity"]} units'
+                }), 400
+
+            # Deduct stock (remove 1 unit from production batch)
+            cur.execute("""
+                UPDATE production_batches
+                SET quantity = quantity - 1
+                WHERE id = ?
+            """, (production_batch_id,))
+
             # Create new assignment
             cur.execute("""
                 INSERT INTO order_lot_assignments
-                (wc_order_id, wc_order_item_id, slot_number, roast_batch_id, weight_g)
-                VALUES (?, ?, ?, ?, ?)
-            """, (order_id, order_item_id, slot_number, batch_id, weight_g))
+                (wc_order_id, wc_order_item_id, slot_number, production_batch_id, roast_batch_id, weight_g)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (order_id, order_item_id, slot_number, production_batch_id, batch['roast_batch_id'], batch['package_size_g']))
 
         conn.commit()
 
-        # Get the lot number for the response
-        batch = cur.execute("SELECT lot_number FROM roast_batches WHERE id = ?", (batch_id,)).fetchone()
+        # Get updated quantity for response
+        updated_batch = cur.execute("""
+            SELECT production_lot, quantity FROM production_batches WHERE id = ?
+        """, (production_batch_id,)).fetchone()
 
         return jsonify({
             'status': 'success',
-            'lot_number': batch['lot_number'] if batch else None
+            'lot_number': batch['source_lot'],
+            'production_lot': updated_batch['production_lot'] if updated_batch else None,
+            'remaining_quantity': updated_batch['quantity'] if updated_batch else 0
         })
 
     except Exception as e:
@@ -1306,7 +1540,7 @@ def api_assign_lot():
 @roast_tracker.route('/api/remove-lot-assignment', methods=['POST'])
 @tracker_login_required
 def api_remove_lot_assignment():
-    """Remove a LOT assignment from an order item slot"""
+    """Remove a LOT assignment from an order item slot and restore stock"""
     data = request.json
     order_id = data.get('order_id')
     order_item_id = data.get('order_item_id')
@@ -1315,26 +1549,78 @@ def api_remove_lot_assignment():
     if not all([order_id, order_item_id]):
         return jsonify({'status': 'error', 'message': 'order_id and order_item_id are required'}), 400
 
-    query_db("""
-        DELETE FROM order_lot_assignments
-        WHERE wc_order_id = ? AND wc_order_item_id = ? AND slot_number = ?
-    """, (order_id, order_item_id, slot_number))
+    conn = get_db()
+    cur = conn.cursor()
 
-    return jsonify({'status': 'success'})
+    try:
+        # Get the existing assignment to restore stock
+        existing = cur.execute("""
+            SELECT production_batch_id FROM order_lot_assignments
+            WHERE wc_order_id = ? AND wc_order_item_id = ? AND slot_number = ?
+        """, (order_id, order_item_id, slot_number)).fetchone()
+
+        if existing:
+            # Restore stock to the production batch (add 1 unit back)
+            cur.execute("""
+                UPDATE production_batches
+                SET quantity = quantity + 1
+                WHERE id = ?
+            """, (existing['production_batch_id'],))
+
+            # Delete the assignment
+            cur.execute("""
+                DELETE FROM order_lot_assignments
+                WHERE wc_order_id = ? AND wc_order_item_id = ? AND slot_number = ?
+            """, (order_id, order_item_id, slot_number))
+
+            conn.commit()
+
+        return jsonify({'status': 'success'})
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        conn.close()
 
 
 @roast_tracker.route('/api/available-lots')
 @tracker_login_required
 def api_available_lots():
-    """Get all available LOTs for assignment"""
+    """Get all available LOTs for assignment (unpacked roasted coffee)"""
     lots = query_db("""
         SELECT rb.id, rb.lot_number, rb.available_weight_g, rb.roast_date,
-               cp.name as product_name, cp.roast_level, gc.country
+               cp.id as product_id, cp.name as product_name, cp.roast_level, gc.country
         FROM roast_batches rb
         JOIN coffee_products cp ON rb.product_id = cp.id
         LEFT JOIN green_coffee gc ON cp.green_coffee_id = gc.id
         WHERE rb.available_weight_g > 0
         ORDER BY cp.name, rb.roast_date DESC
+    """)
+
+    return jsonify({
+        'status': 'success',
+        'lots': [dict(l) for l in lots]
+    })
+
+
+@roast_tracker.route('/api/available-packed-lots')
+@tracker_login_required
+def api_available_packed_lots():
+    """Get all available PACKED LOTs for order assignment (only packaged products can be shipped)"""
+    lots = query_db("""
+        SELECT pb.id as production_batch_id, pb.production_lot, pb.production_type,
+               pb.package_size_g, pb.quantity as available_quantity,
+               rb.id as roast_batch_id, rb.lot_number as source_lot, rb.roast_date,
+               cp.id as product_id, cp.name as product_name, cp.roast_level, gc.country
+        FROM production_batches pb
+        JOIN production_sources ps ON pb.id = ps.production_batch_id
+        JOIN roast_batches rb ON ps.roast_batch_id = rb.id
+        JOIN coffee_products cp ON rb.product_id = cp.id
+        LEFT JOIN green_coffee gc ON cp.green_coffee_id = gc.id
+        WHERE pb.quantity > 0
+          AND pb.production_type IN ('whole_bean_250', 'whole_bean_70', 'whole_bean_16', 'drip_11')
+        ORDER BY cp.name, pb.package_size_g DESC, pb.production_date DESC
     """)
 
     return jsonify({

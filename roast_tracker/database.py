@@ -203,17 +203,20 @@ def init_db():
         )
     """)
 
-    # Order LOT assignments (links WooCommerce order items to roast batch LOTs)
+    # Order LOT assignments (links WooCommerce order items to production batches)
     # For 500g orders, we need 2 LOT entries (2x250g), so slot_number tracks position
+    # Only packed products (production_batches) can be shipped
     cur.execute("""
         CREATE TABLE IF NOT EXISTS order_lot_assignments (
             id INTEGER PRIMARY KEY,
             wc_order_id INTEGER NOT NULL,
             wc_order_item_id INTEGER NOT NULL,
             slot_number INTEGER NOT NULL DEFAULT 1,
-            roast_batch_id INTEGER NOT NULL,
+            production_batch_id INTEGER NOT NULL,
+            roast_batch_id INTEGER,
             weight_g REAL NOT NULL DEFAULT 250,
             assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (production_batch_id) REFERENCES production_batches(id),
             FOREIGN KEY (roast_batch_id) REFERENCES roast_batches(id)
         )
     """)

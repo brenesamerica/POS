@@ -173,15 +173,18 @@
         cursor: pointer;
         font-size: 0.9rem;
         transition: all 0.2s;
+        color: var(--gray-700);
     }
 
     .adjustment-type-btn:hover {
-        border-color: var(--roast-medium);
+        border-color: var(--roast-dark);
+        background: var(--gray-100);
     }
 
     .adjustment-type-btn.active {
-        border-color: var(--roast-medium);
-        background: rgba(205, 154, 89, 0.1);
+        border-color: var(--roast-dark);
+        background: var(--roast-dark);
+        color: white;
     }
 
     .current-stock-display {
@@ -242,6 +245,77 @@
         font-style: italic;
         margin-top: 4px;
     }
+
+    .lot-list {
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid var(--gray-200);
+    }
+
+    .lot-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 6px 8px;
+        background: var(--gray-50);
+        border-radius: var(--radius-sm);
+        margin-bottom: 4px;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+
+    .lot-item:hover {
+        background: var(--gray-100);
+    }
+
+    .lot-item .lot-number {
+        font-family: monospace;
+        font-weight: 500;
+    }
+
+    .lot-item .lot-weight {
+        font-weight: 600;
+    }
+
+    .batch-select-list {
+        margin-bottom: 16px;
+    }
+
+    .batch-select-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 12px;
+        border: 2px solid var(--gray-200);
+        border-radius: var(--radius-sm);
+        margin-bottom: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .batch-select-item:hover {
+        border-color: var(--roast-medium);
+    }
+
+    .batch-select-item.selected {
+        border-color: var(--roast-medium);
+        background: rgba(205, 154, 89, 0.1);
+    }
+
+    .batch-select-item .lot-info {
+        font-family: monospace;
+        font-weight: 500;
+    }
+
+    .batch-select-item .lot-date {
+        color: var(--gray-500);
+        font-size: 0.8rem;
+    }
+
+    .batch-select-item .lot-weight {
+        font-weight: 600;
+    }
 </style>
 {% endblock %}
 
@@ -261,19 +335,30 @@
         </div>
 
         {% if products %}
-        <div class="product-grid" style="padding: 16px;">
-            {% for product in products %}
+        <div style="padding: 16px;">
+            {% set current_country = namespace(value='') %}
+            {% for product in products|sort(attribute='country') %}
+            {% set product_country = product.country or 'Unknown' %}
+            {% if product_country != current_country.value %}
+                {% if current_country.value != '' %}
+                </div><!-- close previous country grid -->
+                {% endif %}
+                <h3 style="margin: 20px 0 12px 0; padding-bottom: 8px; border-bottom: 2px solid var(--roast-medium); color: var(--gray-700);">
+                    {{ product_country }}
+                </h3>
+                <div class="product-grid">
+                {% set current_country.value = product_country %}
+            {% endif %}
             <div class="product-card">
                 <div class="product-header">
                     <div>
                         <div class="product-name">{{ product.name }}</div>
-                        <div class="product-origin">{{ product.country or 'Unknown' }}</div>
                     </div>
                     <span class="roast-badge {{ product.roast_level }}">{{ product.roast_level }}</span>
                 </div>
 
                 <div class="product-stats">
-                    <div class="product-stat" onclick="openEditModal({{ product.id }}, '{{ product.name }}', {{ product.total_available_g|int }})" title="Click to edit">
+                    <div class="product-stat" style="cursor: default;">
                         <div class="value">
                             {% if product.total_available_g >= 500 %}
                             <span style="color: #16a34a;">{{ product.total_available_g|int }}g</span>
@@ -285,16 +370,34 @@
                             <span style="color: var(--gray-400);">0g</span>
                             {% endif %}
                         </div>
-                        <div class="label">Available</div>
-                        <div class="edit-hint">click to edit</div>
+                        <div class="label">Total Available</div>
                     </div>
                     <div class="product-stat" style="cursor: default;">
                         <div class="value">{{ product.batch_count }}</div>
-                        <div class="label">Batches</div>
+                        <div class="label">LOTs</div>
                     </div>
                 </div>
 
-                <div class="add-to-plan-form">
+                {% if product_batches[product.id] %}
+                <div class="lot-list">
+                    {% for batch in product_batches[product.id] %}
+                    <div class="lot-item" onclick="openBatchEditModal({{ batch.id }}, '{{ batch.lot_number }}', {{ batch.available_weight_g|int }}, '{{ product.name }}')" title="Click to edit this LOT">
+                        <span class="lot-number">{{ batch.lot_number }}</span>
+                        <span class="lot-weight">
+                            {% if batch.available_weight_g >= 500 %}
+                            <span style="color: #16a34a;">{{ batch.available_weight_g|int }}g</span>
+                            {% elif batch.available_weight_g >= 200 %}
+                            <span style="color: #ca8a04;">{{ batch.available_weight_g|int }}g</span>
+                            {% else %}
+                            <span style="color: #dc2626;">{{ batch.available_weight_g|int }}g</span>
+                            {% endif %}
+                        </span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <div class="add-to-plan-form" style="margin-top: 12px;">
                     <input type="number" id="weight_{{ product.id }}" value="888" min="100" step="1" placeholder="g">
                     <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.85rem;"
                             onclick="addToPlan({{ product.id }}, '{{ product.name }}')">
@@ -303,6 +406,7 @@
                 </div>
             </div>
             {% endfor %}
+            </div><!-- close last country grid -->
         </div>
         {% else %}
         <p style="text-align: center; color: var(--gray-500); padding: 40px;">
@@ -311,55 +415,52 @@
         {% endif %}
     </div>
 
-    <!-- Roast Batches -->
+    <!-- Packed Products (Ready to Ship) -->
     <div class="card">
         <div class="card-header">
-            <h2 class="card-title">All Roast Batches</h2>
+            <h2 class="card-title">Packed Products (Ready to Ship)</h2>
         </div>
 
-        {% if batches %}
+        {% if packed_products %}
         <div style="overflow-x: auto;">
             <table>
                 <thead>
                     <tr>
-                        <th>LOT Number</th>
                         <th>Product</th>
-                        <th>Country</th>
-                        <th>Level</th>
-                        <th>Roast Date</th>
-                        <th>Roasted</th>
+                        <th>Source LOT</th>
+                        <th>Packaging</th>
                         <th>Available</th>
-                        <th>Used</th>
-                        <th>Actions</th>
+                        <th>Packed Date</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for batch in batches %}
+                    {% for pack in packed_products %}
                     <tr>
-                        <td><span class="lot-number">{{ batch.lot_number }}</span></td>
-                        <td>{{ batch.product_name }}</td>
-                        <td>{{ batch.country or '-' }}</td>
-                        <td><span class="roast-badge {{ batch.roast_level }}">{{ batch.roast_level }}</span></td>
-                        <td>{{ batch.roast_date }}</td>
-                        <td>{{ batch.roasted_weight_g|int }}g</td>
                         <td>
-                            {% if batch.available_weight_g >= 500 %}
-                            <span class="stock-indicator high">{{ batch.available_weight_g|int }}g</span>
-                            {% elif batch.available_weight_g >= 200 %}
-                            <span class="stock-indicator medium">{{ batch.available_weight_g|int }}g</span>
-                            {% elif batch.available_weight_g > 0 %}
-                            <span class="stock-indicator low">{{ batch.available_weight_g|int }}g</span>
+                            <strong>{{ pack.product_name }}</strong>
+                            {% if pack.country %}<br><small style="color: var(--gray-500);">{{ pack.country }}</small>{% endif %}
+                        </td>
+                        <td><span class="lot-number">{{ pack.source_lot }}</span></td>
+                        <td>
+                            {% if pack.production_type == 'whole_bean_250' %}
+                                <span style="background: rgba(34, 197, 94, 0.1); color: #16a34a; padding: 2px 8px; border-radius: 8px; font-size: 0.85rem;">250g Whole Bean</span>
+                            {% elif pack.production_type == 'whole_bean_70' %}
+                                <span style="background: rgba(59, 130, 246, 0.1); color: #2563eb; padding: 2px 8px; border-radius: 8px; font-size: 0.85rem;">70g Whole Bean</span>
+                            {% elif pack.production_type == 'whole_bean_16' %}
+                                <span style="background: rgba(168, 85, 247, 0.1); color: #9333ea; padding: 2px 8px; border-radius: 8px; font-size: 0.85rem;">16g Whole Bean</span>
+                            {% elif pack.production_type == 'drip_11' %}
+                                <span style="background: rgba(234, 179, 8, 0.1); color: #ca8a04; padding: 2px 8px; border-radius: 8px; font-size: 0.85rem;">11g Drip</span>
                             {% else %}
-                            <span style="color: var(--gray-400);">0g</span>
+                                {{ pack.production_type }}
                             {% endif %}
                         </td>
-                        <td>{{ batch.used_weight_g|int }}g</td>
                         <td>
-                            <a href="{{ url_for('roast_tracker.batch_detail', batch_id=batch.id) }}" class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.8rem;">View</a>
-                            {% if batch.available_weight_g > 0 %}
-                            <a href="{{ url_for('roast_tracker.production') }}?batch_id={{ batch.id }}" class="btn btn-primary" style="padding: 4px 12px; font-size: 0.8rem;">Use</a>
-                            {% endif %}
+                            <strong style="{% if pack.quantity > 5 %}color: #16a34a;{% elif pack.quantity > 0 %}color: #ca8a04;{% else %}color: #dc2626;{% endif %}">
+                                {{ pack.quantity }} units
+                            </strong>
+                            <small style="color: var(--gray-500);">({{ pack.package_size_g * pack.quantity }}g)</small>
                         </td>
+                        <td>{{ pack.production_date }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -367,7 +468,7 @@
         </div>
         {% else %}
         <p style="text-align: center; color: var(--gray-500); padding: 40px;">
-            No roast batches recorded yet.
+            No packed products available. Use the <a href="{{ url_for('roast_tracker.production') }}">Production</a> page to package roasted coffee.
         </p>
         {% endif %}
     </div>
@@ -417,88 +518,81 @@
 {% endblock %}
 
 {% block extra_js %}
-<!-- Edit Inventory Modal -->
-<div class="modal-overlay" id="editModal">
+<!-- Edit Batch/LOT Modal -->
+<div class="modal-overlay" id="batchEditModal">
     <div class="modal">
         <div class="modal-header">
-            <h3 id="modalTitle">Edit Inventory</h3>
-            <button class="modal-close" onclick="closeModal()">&times;</button>
+            <h3 id="batchModalTitle">Edit LOT</h3>
+            <button class="modal-close" onclick="closeBatchModal()">&times;</button>
         </div>
         <div class="modal-body">
             <div class="current-stock-display">
-                <div class="label">Current Available</div>
-                <div class="value" id="currentStock">0g</div>
+                <div class="label" id="batchLotLabel">LOT: </div>
+                <div class="value" id="batchCurrentStock">0g</div>
             </div>
 
             <div class="adjustment-type-buttons">
-                <button type="button" class="adjustment-type-btn active" data-type="set" onclick="selectAdjustmentType('set')">
+                <button type="button" class="adjustment-type-btn active" data-type="set" onclick="selectBatchAdjustmentType('set')">
                     Set To
                 </button>
-                <button type="button" class="adjustment-type-btn" data-type="add" onclick="selectAdjustmentType('add')">
+                <button type="button" class="adjustment-type-btn" data-type="add" onclick="selectBatchAdjustmentType('add')">
                     + Add
                 </button>
-                <button type="button" class="adjustment-type-btn" data-type="subtract" onclick="selectAdjustmentType('subtract')">
+                <button type="button" class="adjustment-type-btn" data-type="subtract" onclick="selectBatchAdjustmentType('subtract')">
                     - Subtract
                 </button>
             </div>
 
             <div class="form-group">
-                <label for="adjustAmount">Amount (g)</label>
-                <input type="number" id="adjustAmount" min="0" step="1" placeholder="Enter amount in grams">
+                <label for="batchAdjustAmount">Amount (g)</label>
+                <input type="number" id="batchAdjustAmount" min="0" step="1" placeholder="Enter amount in grams">
             </div>
 
             <div class="form-group">
-                <label for="adjustComment">Comment (required for audit)</label>
-                <textarea id="adjustComment" rows="2" placeholder="e.g., Physical count correction, Damaged stock, etc." style="width: 100%; padding: 10px; border: 2px solid var(--gray-200); border-radius: var(--radius-sm);"></textarea>
-            </div>
-
-            <div class="form-group" style="margin-top: 20px;">
-                <label>Recent Adjustments</label>
-                <div class="history-list" id="historyList">
-                    <div class="history-item" style="color: var(--gray-400); text-align: center;">Loading...</div>
-                </div>
+                <label for="batchAdjustComment">Comment (required for audit)</label>
+                <textarea id="batchAdjustComment" rows="2" placeholder="e.g., Physical count correction, Damaged stock, etc." style="width: 100%; padding: 10px; border: 2px solid var(--gray-200); border-radius: var(--radius-sm);"></textarea>
             </div>
         </div>
         <div class="modal-footer">
-            <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-            <button class="btn btn-primary" onclick="saveAdjustment()">Save Adjustment</button>
+            <button class="btn btn-secondary" onclick="closeBatchModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveBatchAdjustment()">Save Adjustment</button>
         </div>
     </div>
 </div>
 
 <script>
-    let currentProductId = null;
-    let currentStock = 0;
-    let adjustmentType = 'set';
+    // Batch modal state
+    let currentBatchId = null;
+    let currentBatchStock = 0;
+    let batchAdjustmentType = 'set';
 
-    function openEditModal(productId, productName, availableG) {
-        currentProductId = productId;
-        currentStock = availableG;
+    // Batch/LOT modal functions
+    function openBatchEditModal(batchId, lotNumber, availableG, productName) {
+        currentBatchId = batchId;
+        currentBatchStock = availableG;
 
-        document.getElementById('modalTitle').textContent = `Edit: ${productName}`;
-        document.getElementById('currentStock').textContent = `${availableG}g`;
-        document.getElementById('adjustAmount').value = availableG;
-        document.getElementById('adjustComment').value = '';
+        document.getElementById('batchModalTitle').textContent = `Edit: ${productName}`;
+        document.getElementById('batchLotLabel').textContent = `LOT: ${lotNumber}`;
+        document.getElementById('batchCurrentStock').textContent = `${availableG}g`;
+        document.getElementById('batchAdjustAmount').value = availableG;
+        document.getElementById('batchAdjustComment').value = '';
 
         // Reset adjustment type to 'set'
-        selectAdjustmentType('set');
+        selectBatchAdjustmentType('set');
 
-        // Load history
-        loadHistory(productId);
-
-        document.getElementById('editModal').classList.add('active');
+        document.getElementById('batchEditModal').classList.add('active');
     }
 
-    function closeModal() {
-        document.getElementById('editModal').classList.remove('active');
-        currentProductId = null;
+    function closeBatchModal() {
+        document.getElementById('batchEditModal').classList.remove('active');
+        currentBatchId = null;
     }
 
-    function selectAdjustmentType(type) {
-        adjustmentType = type;
+    function selectBatchAdjustmentType(type) {
+        batchAdjustmentType = type;
 
         // Update button states
-        document.querySelectorAll('.adjustment-type-btn').forEach(btn => {
+        document.querySelectorAll('#batchEditModal .adjustment-type-btn').forEach(btn => {
             btn.classList.remove('active');
             if (btn.dataset.type === type) {
                 btn.classList.add('active');
@@ -506,9 +600,9 @@
         });
 
         // Update amount field
-        const amountInput = document.getElementById('adjustAmount');
+        const amountInput = document.getElementById('batchAdjustAmount');
         if (type === 'set') {
-            amountInput.value = currentStock;
+            amountInput.value = currentBatchStock;
             amountInput.placeholder = 'New total amount';
         } else {
             amountInput.value = '';
@@ -516,40 +610,9 @@
         }
     }
 
-    async function loadHistory(productId) {
-        const historyList = document.getElementById('historyList');
-
-        try {
-            const response = await fetch(`{{ url_for("roast_tracker.api_inventory_history", product_id=0) }}`.replace('/0', `/${productId}`));
-            const data = await response.json();
-
-            if (data.status === 'success' && data.adjustments.length > 0) {
-                historyList.innerHTML = data.adjustments.map(adj => {
-                    const changeClass = adj.adjustment_type === 'add' ? 'add' : (adj.adjustment_type === 'subtract' ? 'subtract' : '');
-                    const changeText = adj.adjustment_type === 'set' ? `Set to ${adj.new_total_g}g` :
-                                       adj.adjustment_type === 'add' ? `+${adj.amount_g}g` :
-                                       adj.adjustment_type === 'subtract' ? `-${adj.amount_g}g` :
-                                       `Correction: ${adj.new_total_g}g`;
-                    return `
-                        <div class="history-item">
-                            <div class="date">${adj.created_at}</div>
-                            <div class="change ${changeClass}">${changeText}</div>
-                            <div>Previous: ${adj.previous_total_g}g → New: ${adj.new_total_g}g</div>
-                            <div class="comment">"${adj.comment}"</div>
-                        </div>
-                    `;
-                }).join('');
-            } else {
-                historyList.innerHTML = '<div class="history-item" style="color: var(--gray-400); text-align: center;">No adjustment history</div>';
-            }
-        } catch (error) {
-            historyList.innerHTML = '<div class="history-item" style="color: var(--gray-400); text-align: center;">Failed to load history</div>';
-        }
-    }
-
-    async function saveAdjustment() {
-        const amount = parseFloat(document.getElementById('adjustAmount').value);
-        const comment = document.getElementById('adjustComment').value.trim();
+    async function saveBatchAdjustment() {
+        const amount = parseFloat(document.getElementById('batchAdjustAmount').value);
+        const comment = document.getElementById('batchAdjustComment').value.trim();
 
         if (isNaN(amount) || amount < 0) {
             alert('Please enter a valid amount');
@@ -558,7 +621,7 @@
 
         if (!comment) {
             alert('Comment is required for audit trail');
-            document.getElementById('adjustComment').focus();
+            document.getElementById('batchAdjustComment').focus();
             return;
         }
 
@@ -567,12 +630,12 @@
         btn.textContent = 'Saving...';
 
         try {
-            const response = await fetch('{{ url_for("roast_tracker.api_adjust_inventory") }}', {
+            const response = await fetch('{{ url_for("roast_tracker.api_adjust_batch_inventory") }}', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
-                    product_id: currentProductId,
-                    adjustment_type: adjustmentType,
+                    batch_id: currentBatchId,
+                    adjustment_type: batchAdjustmentType,
                     amount_g: amount,
                     comment: comment
                 })
@@ -581,8 +644,8 @@
             const data = await response.json();
 
             if (data.status === 'success') {
-                alert(`Inventory updated!\nPrevious: ${data.previous_total_g}g\nNew: ${data.new_total_g}g`);
-                closeModal();
+                alert(`LOT inventory updated!\nPrevious: ${data.previous_weight_g}g\nNew: ${data.new_weight_g}g`);
+                closeBatchModal();
                 location.reload();
             } else {
                 alert('Error: ' + (data.message || 'Unknown error'));
@@ -598,12 +661,14 @@
 
     // Close modal on escape key
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') closeModal();
+        if (e.key === 'Escape') {
+            closeBatchModal();
+        }
     });
 
     // Close modal on overlay click
-    document.getElementById('editModal').addEventListener('click', (e) => {
-        if (e.target.classList.contains('modal-overlay')) closeModal();
+    document.getElementById('batchEditModal').addEventListener('click', (e) => {
+        if (e.target.classList.contains('modal-overlay')) closeBatchModal();
     });
 
     async function addToPlan(productId, productName) {

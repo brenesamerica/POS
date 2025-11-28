@@ -1,0 +1,227 @@
+{% extends "roast_tracker/base.html" %}
+
+{% block title %}Roast History{% endblock %}
+
+{% block extra_css %}
+<style>
+    .filter-bar {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+    }
+
+    .filter-bar select,
+    .filter-bar input {
+        padding: 8px 12px;
+        border: 2px solid var(--gray-200);
+        border-radius: var(--radius-sm);
+        font-size: 0.9rem;
+        background: white;
+        color: var(--gray-800);
+    }
+
+    .filter-bar select:focus,
+    .filter-bar input:focus {
+        outline: none;
+        border-color: var(--roast-dark);
+    }
+
+    .filter-bar select option {
+        background: white;
+        color: var(--gray-800);
+    }
+
+    .summary-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+
+    .summary-stat {
+        background: var(--gray-50);
+        padding: 12px 16px;
+        border-radius: var(--radius-sm);
+        text-align: center;
+    }
+
+    .summary-stat .value {
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: var(--roast-dark);
+    }
+
+    .summary-stat .label {
+        font-size: 0.8rem;
+        color: var(--gray-500);
+        margin-top: 2px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Roast History</h1>
+    <div>
+        <a href="{{ url_for('roast_tracker.new_roast') }}" class="btn btn-primary">+ New Roast</a>
+    </div>
+</div>
+
+<div class="page-content">
+    <!-- Summary Stats -->
+    <div class="summary-stats">
+        <div class="summary-stat">
+            <div class="value">{{ batches|length }}</div>
+            <div class="label">Total Batches</div>
+        </div>
+        <div class="summary-stat">
+            <div class="value">{{ "%.1f"|format(total_roasted_kg) }}kg</div>
+            <div class="label">Total Roasted</div>
+        </div>
+        <div class="summary-stat">
+            <div class="value">{{ "%.1f"|format(total_available_kg) }}kg</div>
+            <div class="label">Available</div>
+        </div>
+        <div class="summary-stat">
+            <div class="value">{{ "%.1f"|format(total_used_kg) }}kg</div>
+            <div class="label">Used</div>
+        </div>
+    </div>
+
+    <!-- All Roast Batches -->
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">All Roast Batches</h2>
+        </div>
+
+        {% if batches %}
+        <div class="filter-bar">
+            <select id="filterCountry" onchange="filterTable()">
+                <option value="">All Countries</option>
+                {% for country in countries %}
+                <option value="{{ country }}">{{ country }}</option>
+                {% endfor %}
+            </select>
+            <select id="filterLevel" onchange="filterTable()">
+                <option value="">All Levels</option>
+                <option value="V">Light (V)</option>
+                <option value="K">Medium (K)</option>
+                <option value="S">Dark (S)</option>
+            </select>
+            <select id="filterStock" onchange="filterTable()">
+                <option value="">All Stock</option>
+                <option value="available">Has Stock</option>
+                <option value="empty">Empty</option>
+            </select>
+            <input type="text" id="filterSearch" placeholder="Search LOT or product..." onkeyup="filterTable()">
+        </div>
+
+        <div style="overflow-x: auto;">
+            <table id="batchTable">
+                <thead>
+                    <tr>
+                        <th>LOT Number</th>
+                        <th>Product</th>
+                        <th>Country</th>
+                        <th>Level</th>
+                        <th>Roast Date</th>
+                        <th>Roasted</th>
+                        <th>Available</th>
+                        <th>Used</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for batch in batches %}
+                    <tr data-country="{{ batch.country or '' }}"
+                        data-level="{{ batch.roast_level }}"
+                        data-available="{{ batch.available_weight_g }}"
+                        data-lot="{{ batch.lot_number|lower }}"
+                        data-product="{{ batch.product_name|lower }}">
+                        <td><span class="lot-number">{{ batch.lot_number }}</span></td>
+                        <td>{{ batch.product_name }}</td>
+                        <td>{{ batch.country or '-' }}</td>
+                        <td><span class="roast-badge {{ batch.roast_level }}">{{ batch.roast_level }}</span></td>
+                        <td>{{ batch.roast_date }}</td>
+                        <td>{{ batch.roasted_weight_g|int }}g</td>
+                        <td>
+                            {% if batch.available_weight_g >= 500 %}
+                            <span class="stock-indicator high">{{ batch.available_weight_g|int }}g</span>
+                            {% elif batch.available_weight_g >= 200 %}
+                            <span class="stock-indicator medium">{{ batch.available_weight_g|int }}g</span>
+                            {% elif batch.available_weight_g > 0 %}
+                            <span class="stock-indicator low">{{ batch.available_weight_g|int }}g</span>
+                            {% else %}
+                            <span style="color: var(--gray-400);">0g</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ batch.used_weight_g|int }}g</td>
+                        <td>
+                            <a href="{{ url_for('roast_tracker.batch_detail', batch_id=batch.id) }}" class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.8rem;">View</a>
+                            {% if batch.available_weight_g > 0 %}
+                            <a href="{{ url_for('roast_tracker.production') }}?batch_id={{ batch.id }}" class="btn btn-primary" style="padding: 4px 12px; font-size: 0.8rem;">Use</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p style="text-align: center; color: var(--gray-500); padding: 40px;">
+            No roast batches recorded yet. <a href="{{ url_for('roast_tracker.new_roast') }}">Record a roast</a> to get started.
+        </p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function filterTable() {
+    const countryFilter = document.getElementById('filterCountry').value;
+    const levelFilter = document.getElementById('filterLevel').value;
+    const stockFilter = document.getElementById('filterStock').value;
+    const searchFilter = document.getElementById('filterSearch').value.toLowerCase();
+
+    const rows = document.querySelectorAll('#batchTable tbody tr');
+
+    rows.forEach(row => {
+        const country = row.dataset.country;
+        const level = row.dataset.level;
+        const available = parseFloat(row.dataset.available);
+        const lot = row.dataset.lot;
+        const product = row.dataset.product;
+
+        let show = true;
+
+        // Country filter
+        if (countryFilter && country !== countryFilter) {
+            show = false;
+        }
+
+        // Level filter
+        if (levelFilter && level !== levelFilter) {
+            show = false;
+        }
+
+        // Stock filter
+        if (stockFilter === 'available' && available <= 0) {
+            show = false;
+        }
+        if (stockFilter === 'empty' && available > 0) {
+            show = false;
+        }
+
+        // Search filter
+        if (searchFilter && !lot.includes(searchFilter) && !product.includes(searchFilter)) {
+            show = false;
+        }
+
+        row.style.display = show ? '' : 'none';
+    });
+}
+</script>
+{% endblock %}

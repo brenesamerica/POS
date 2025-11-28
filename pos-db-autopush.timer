@@ -1,0 +1,12 @@
+[Unit]
+Description=Run POS Database Auto-Push every 5 minutes
+Requires=pos-db-autopush.service
+
+[Timer]
+# Run every 5 minutes
+OnBootSec=5min
+OnUnitActiveSec=5min
+Unit=pos-db-autopush.service
+
+[Install]
+WantedBy=timers.target

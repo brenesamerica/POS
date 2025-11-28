@@ -76,13 +76,24 @@
         </div>
 
         {% if batches %}
-        <div class="batch-grid">
-            {% for batch in batches %}
+        <div style="padding: 16px;">
+            {% set current_country = namespace(value='') %}
+            {% for batch in batches|sort(attribute='country') %}
+            {% set batch_country = batch.country or 'Unknown' %}
+            {% if batch_country != current_country.value %}
+                {% if current_country.value != '' %}
+                </div><!-- close previous country grid -->
+                {% endif %}
+                <h3 style="margin: 20px 0 12px 0; padding-bottom: 8px; border-bottom: 2px solid var(--roast-medium); color: var(--gray-700);">
+                    {{ batch_country }}
+                </h3>
+                <div class="batch-grid">
+                {% set current_country.value = batch_country %}
+            {% endif %}
             <div class="batch-card" onclick="location.href='{{ url_for('roast_tracker.batch_detail', batch_id=batch.id) }}'">
                 <div class="header">
                     <div>
                         <div class="product-name">{{ batch.product_name }}</div>
-                        <div class="country">{{ batch.country or 'Unknown origin' }}</div>
                     </div>
                     <span class="roast-badge {{ batch.roast_level }}">{{ batch.roast_level }}</span>
                 </div>
@@ -107,6 +118,7 @@
                 </div>
             </div>
             {% endfor %}
+            </div><!-- close last country grid -->
         </div>
         {% else %}
         <p style="text-align: center; color: var(--gray-500); padding: 40px;">
