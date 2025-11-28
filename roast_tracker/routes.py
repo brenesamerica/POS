@@ -45,18 +45,38 @@ def dashboard():
     """)
 
     # Get low stock alerts by PRODUCT (less than 300g total, including 0g)
+    # Includes BOTH unpacked roasted coffee AND packed products still in inventory
     LOW_STOCK_THRESHOLD = 300
     low_stock_products = query_db("""
         SELECT cp.id, cp.name as product_name, cp.roast_level,
                gc.country,
-               COALESCE(SUM(rb.available_weight_g), 0) as total_available_g
+               COALESCE(SUM(rb.available_weight_g), 0) as roasted_available_g,
+               COALESCE(
+                   (SELECT SUM(pb.quantity * pb.package_size_g)
+                    FROM production_batches pb
+                    JOIN production_sources ps ON pb.id = ps.production_batch_id
+                    JOIN roast_batches rb2 ON ps.roast_batch_id = rb2.id
+                    WHERE rb2.product_id = cp.id AND pb.quantity > 0
+                      AND pb.production_type IN ('whole_bean_250', 'whole_bean_70', 'whole_bean_16', 'drip_11')
+                   ), 0
+               ) as packed_available_g,
+               COALESCE(SUM(rb.available_weight_g), 0) +
+               COALESCE(
+                   (SELECT SUM(pb.quantity * pb.package_size_g)
+                    FROM production_batches pb
+                    JOIN production_sources ps ON pb.id = ps.production_batch_id
+                    JOIN roast_batches rb2 ON ps.roast_batch_id = rb2.id
+                    WHERE rb2.product_id = cp.id AND pb.quantity > 0
+                      AND pb.production_type IN ('whole_bean_250', 'whole_bean_70', 'whole_bean_16', 'drip_11')
+                   ), 0
+               ) as total_available_g
         FROM coffee_products cp
         LEFT JOIN green_coffee gc ON cp.green_coffee_id = gc.id
         LEFT JOIN roast_batches rb ON cp.id = rb.product_id
         WHERE cp.is_active = 1
         GROUP BY cp.id
-        HAVING COALESCE(SUM(rb.available_weight_g), 0) < ?
-        ORDER BY COALESCE(SUM(rb.available_weight_g), 0) ASC
+        HAVING total_available_g < ?
+        ORDER BY total_available_g ASC
     """, (LOW_STOCK_THRESHOLD,))
 
     # Get recent production
@@ -70,6 +90,30 @@ def dashboard():
         LIMIT 10
     """)
 
+    # Get packed products (ready to ship) grouped by product
+    packed_products = query_db("""
+        SELECT
+            cp.id as product_id,
+            cp.name as product_name,
+            cp.roast_level,
+            gc.country,
+            pb.package_size_g,
+            SUM(pb.quantity) as total_quantity,
+            GROUP_CONCAT(pb.production_lot || ':' || pb.quantity) as lots_detail
+        FROM production_batches pb
+        JOIN production_sources ps ON pb.id = ps.production_batch_id
+        JOIN roast_batches rb ON ps.roast_batch_id = rb.id
+        JOIN coffee_products cp ON rb.product_id = cp.id
+        LEFT JOIN green_coffee gc ON cp.green_coffee_id = gc.id
+        WHERE pb.quantity > 0
+          AND pb.production_type IN ('whole_bean_250', 'whole_bean_70', 'whole_bean_16', 'drip_11')
+        GROUP BY cp.id, pb.package_size_g
+        ORDER BY cp.name, pb.package_size_g DESC
+    """)
+
+    # Calculate total packed weight
+    total_packed = sum(p['total_quantity'] * p['package_size_g'] for p in packed_products) if packed_products else 0
+
     # Summary stats
     total_available = sum(b['available_weight_g'] for b in batches) if batches else 0
 
@@ -77,7 +121,9 @@ def dashboard():
                            batches=batches,
                            low_stock=low_stock_products,
                            recent_production=recent_production,
+                           packed_products=packed_products,
                            total_available_kg=total_available / 1000,
+                           total_packed_kg=total_packed / 1000,
                            roast_levels=ROAST_LEVELS)
 
 
@@ -979,6 +1025,159 @@ def roast_plan():
                            today=date.today().isoformat())
 
 
+@roast_tracker.route('/api/preview-plan-lot', methods=['POST'])
+@tracker_login_required
+def api_preview_plan_lot():
+    """Preview the LOT number that would be generated for a plan"""
+    data = request.json
+    plan_id = data.get('plan_id')
+    roast_date_str = data.get('roast_date')
+
+    if not plan_id:
+        return jsonify({'status': 'error', 'message': 'plan_id is required'}), 400
+
+    # Get the plan details
+    plan = query_db("""
+        SELECT rp.*, cp.roast_level, cp.name as product_name
+        FROM roast_plans rp
+        JOIN coffee_products cp ON rp.product_id = cp.id
+        WHERE rp.id = ?
+    """, (plan_id,), one=True)
+
+    if not plan:
+        return jsonify({'status': 'error', 'message': 'Plan not found'}), 404
+
+    # Parse roast date
+    from datetime import date
+    if roast_date_str:
+        roast_date = datetime.strptime(roast_date_str, '%Y-%m-%d').date()
+    else:
+        roast_date = date.today()
+
+    roast_level = plan['roast_level'] or 'K'
+    product_id = plan['product_id']
+
+    # Generate LOT number preview
+    lot_number = generate_roast_lot(roast_level, roast_date, product_id)
+
+    return jsonify({
+        'status': 'success',
+        'lot_number': lot_number,
+        'roast_level': roast_level,
+        'product_name': plan['product_name']
+    })
+
+
+@roast_tracker.route('/api/complete-plan-with-roast', methods=['POST'])
+@tracker_login_required
+def api_complete_plan_with_roast():
+    """Complete a roast plan by entering actual roast data - creates roast batch and LOT"""
+    from .database import get_db
+    from datetime import date
+
+    data = request.json
+    plan_id = data.get('plan_id')
+    roasted_weight_g = data.get('roasted_weight_g')
+    roast_date_str = data.get('roast_date', date.today().isoformat())
+    notes = data.get('notes', '')
+    custom_lot_number = data.get('lot_number')  # Allow custom LOT number
+
+    if not plan_id or not roasted_weight_g:
+        return jsonify({'status': 'error', 'message': 'plan_id and roasted_weight_g are required'}), 400
+
+    # Get the plan details
+    plan = query_db("""
+        SELECT rp.*, cp.roast_level, cp.name as product_name
+        FROM roast_plans rp
+        JOIN coffee_products cp ON rp.product_id = cp.id
+        WHERE rp.id = ?
+    """, (plan_id,), one=True)
+
+    if not plan:
+        return jsonify({'status': 'error', 'message': 'Plan not found'}), 404
+
+    if plan['status'] != 'planned':
+        return jsonify({'status': 'error', 'message': 'Plan is not in planned status'}), 400
+
+    # Parse roast date
+    roast_date = datetime.strptime(roast_date_str, '%Y-%m-%d').date()
+
+    # Get roast level from the product
+    roast_level = plan['roast_level'] or 'K'
+    product_id = plan['product_id']
+    green_weight_g = plan['planned_green_weight_g']
+
+    # Use custom LOT number if provided, otherwise generate
+    if custom_lot_number:
+        lot_number = custom_lot_number
+    else:
+        lot_number = generate_roast_lot(roast_level, roast_date, product_id)
+
+    # Check if this LOT already exists (same product, same day, same level)
+    existing = query_db(
+        "SELECT id FROM roast_batches WHERE lot_number = ?",
+        (lot_number,), one=True
+    )
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    try:
+        if existing:
+            # Add to existing batch
+            cur.execute("""
+                UPDATE roast_batches
+                SET green_weight_g = green_weight_g + ?,
+                    roasted_weight_g = roasted_weight_g + ?,
+                    available_weight_g = available_weight_g + ?
+                WHERE lot_number = ?
+            """, (green_weight_g, roasted_weight_g, roasted_weight_g, lot_number))
+            batch_id = existing['id']
+        else:
+            # Calculate weight loss
+            weight_loss = ((green_weight_g - roasted_weight_g) / green_weight_g * 100) if green_weight_g > 0 else 0
+
+            # Get day sequence from LOT number
+            day_seq = int(lot_number.split('/')[-1])
+
+            # Combine notes from plan and any additional notes
+            combined_notes = plan['notes'] or ''
+            if notes:
+                combined_notes = f"{combined_notes} | {notes}" if combined_notes else notes
+
+            # Insert new roast batch
+            cur.execute("""
+                INSERT INTO roast_batches (
+                    lot_number, product_id, roast_date, roast_level, day_sequence,
+                    green_weight_g, roasted_weight_g, available_weight_g, weight_loss_percent, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                lot_number, product_id, roast_date.isoformat(), roast_level, day_seq,
+                green_weight_g, roasted_weight_g, roasted_weight_g, weight_loss, combined_notes
+            ))
+            batch_id = cur.lastrowid
+
+        # Mark plan as completed
+        cur.execute("UPDATE roast_plans SET status = 'completed' WHERE id = ?", (plan_id,))
+
+        conn.commit()
+
+        return jsonify({
+            'status': 'success',
+            'message': f'Roast completed and added to inventory',
+            'lot_number': lot_number,
+            'batch_id': batch_id,
+            'roasted_weight_g': roasted_weight_g,
+            'weight_loss_percent': round(((green_weight_g - roasted_weight_g) / green_weight_g * 100), 1) if green_weight_g > 0 else 0
+        })
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        conn.close()
+
+
 @roast_tracker.route('/api/add-to-plan', methods=['POST'])
 @tracker_login_required
 def api_add_to_plan():
@@ -1001,98 +1200,138 @@ def api_add_to_plan():
 @roast_tracker.route('/api/analyze-orders', methods=['POST'])
 @tracker_login_required
 def api_analyze_orders():
-    """API: Analyze orders and generate roast plan suggestions"""
+    """API: Analyze orders and generate roast plan suggestions
+
+    Only suggests roasting for coffees that are ORDERED and where
+    combined (packed + roasted) inventory is insufficient.
+
+    Roast calculation: 888g green -> ~750g roasted (15.5% loss)
+    Each batch is a separate roast plan entry (not combined).
+    """
     import sys
     sys.path.insert(0, '..')
     from app import fetch_wc_orders
+    import math
 
     # Fetch processing orders
     orders = fetch_wc_orders(status='processing')
 
-    # Get ALL products with their available roasted coffee
-    products_with_stock = query_db("""
-        SELECT cp.id, cp.name, cp.roast_level, gc.country,
-               COALESCE(SUM(rb.available_weight_g), 0) as total_available
+    # Get ALL products with their info
+    products = query_db("""
+        SELECT cp.id, cp.name, cp.roast_level, gc.country
         FROM coffee_products cp
         LEFT JOIN green_coffee gc ON cp.green_coffee_id = gc.id
+        WHERE cp.is_active = 1
+    """)
+    products_by_id = {p['id']: p for p in products}
+
+    # Get ROASTED inventory (available weight in roast batches)
+    roasted_inventory = query_db("""
+        SELECT product_id, COALESCE(SUM(available_weight_g), 0) as roasted_g
+        FROM roast_batches
+        WHERE available_weight_g > 0
+        GROUP BY product_id
+    """)
+    roasted_by_product = {r['product_id']: r['roasted_g'] for r in roasted_inventory}
+
+    # Get PACKED inventory (available units * package size)
+    packed_inventory = query_db("""
+        SELECT cp.id as product_id,
+               COALESCE(SUM(pb.quantity * pb.package_size_g), 0) as packed_g
+        FROM coffee_products cp
         LEFT JOIN roast_batches rb ON cp.id = rb.product_id
+        LEFT JOIN production_sources ps ON rb.id = ps.roast_batch_id
+        LEFT JOIN production_batches pb ON ps.production_batch_id = pb.id AND pb.quantity > 0
         WHERE cp.is_active = 1
         GROUP BY cp.id
     """)
+    packed_by_product = {p['product_id']: p['packed_g'] for p in packed_inventory}
 
-    roasted_by_product = {p['id']: p['total_available'] for p in products_with_stock}
-    products_by_id = {p['id']: p for p in products_with_stock}
-
-    # Get advent calendar config requirements
-    advent_config = query_db("""
-        SELECT ac.product_id, cp.name
-        FROM advent_calendar_config ac
-        JOIN coffee_products cp ON ac.product_id = cp.id
-        WHERE ac.is_active = 1
+    # Get existing LOT assignments to subtract from needs
+    # (already assigned = already fulfilled, don't need to roast for these)
+    existing_assignments = query_db("""
+        SELECT wc_order_id, wc_order_item_id, slot_number, weight_g
+        FROM order_lot_assignments
     """)
+    # Build a dict: (order_id, item_id) -> total_assigned_weight_g
+    assigned_by_item = {}
+    for a in existing_assignments:
+        key = (a['wc_order_id'], a['wc_order_item_id'])
+        assigned_by_item[key] = assigned_by_item.get(key, 0) + a['weight_g']
 
-    # Calculate needs
-    needs = {}  # product_id -> weight_needed
+    # Calculate needs from orders ONLY
+    needs = {}  # product_id -> weight_needed_g
 
-    # From orders (estimate 250g per order item)
     for order in orders:
         for item in order['line_items']:
             item_name = item['name'].lower()
-            # Try to match product by name (more flexible matching)
-            for p in products_with_stock:
-                p_name = p['name'].lower()
-                p_country = (p['country'] or '').lower()
-                # Match if product name is in item name or vice versa
-                if p_name in item_name or item_name in p_name or (p_country and p_country in item_name):
-                    weight_needed = item['quantity'] * 250
-                    needs[p['id']] = needs.get(p['id'], 0) + weight_needed
-                    break
+            # Determine weight per unit (250g or 500g)
+            weight_per_unit = 500 if '500' in item['name'] else 250
 
-    # From advent calendar (48g per configured product)
-    for ac in advent_config:
-        needs[ac['product_id']] = needs.get(ac['product_id'], 0) + 48
+            # Try to match product by NAME (strict matching)
+            best_match = None
+            best_match_score = 0
 
-    # Standard roast size: 888g green -> ~750g roasted (15% loss)
-    STANDARD_ROAST_GREEN_G = 888
-    LOW_STOCK_THRESHOLD = 300
+            for p in products:
+                p_name = p['name'].lower().strip()
+
+                # Exact name match in order item (highest priority)
+                if p_name in item_name:
+                    score = len(p_name) * 10  # Longer name matches are better
+                    if score > best_match_score:
+                        best_match = p
+                        best_match_score = score
+
+            if best_match:
+                total_weight_needed = item['quantity'] * weight_per_unit
+                # Subtract weight already assigned to this order item
+                already_assigned = assigned_by_item.get((order['id'], item['id']), 0)
+                weight_still_needed = max(0, total_weight_needed - already_assigned)
+
+                if weight_still_needed > 0:
+                    needs[best_match['id']] = needs.get(best_match['id'], 0) + weight_still_needed
+
+    # Roast parameters: 888g green -> 750g roasted
+    STANDARD_GREEN_WEIGHT_G = 888
+    ROASTED_OUTPUT_G = 750  # approximately 15.5% weight loss
 
     suggestions = []
 
-    # First, add products with explicit needs that exceed available
-    for product_id, needed in needs.items():
-        available = roasted_by_product.get(product_id, 0)
-        if needed > available:
-            shortfall = needed - available
+    # Only check products that have been ordered
+    for product_id, needed_g in needs.items():
+        packed_g = packed_by_product.get(product_id, 0)
+        roasted_g = roasted_by_product.get(product_id, 0)
+        total_available_g = packed_g + roasted_g
+
+        if needed_g > total_available_g:
+            shortfall_g = needed_g - total_available_g
+            # Calculate how many 888g batches needed to cover shortfall
+            batches_needed = math.ceil(shortfall_g / ROASTED_OUTPUT_G)
+
             product = products_by_id.get(product_id)
             if product:
-                suggestions.append({
-                    'product_id': product_id,
-                    'product_name': product['name'],
-                    'needed_g': needed,
-                    'available_g': int(available),
-                    'shortfall_g': shortfall,
-                    'suggested_roast_g': STANDARD_ROAST_GREEN_G,
-                    'reason': 'order_need'
-                })
-
-    # Also include all products with low stock (<300g) that aren't already in suggestions
-    added_product_ids = {s['product_id'] for s in suggestions}
-    for p in products_with_stock:
-        if p['id'] not in added_product_ids and p['total_available'] < LOW_STOCK_THRESHOLD:
-            suggestions.append({
-                'product_id': p['id'],
-                'product_name': p['name'],
-                'needed_g': LOW_STOCK_THRESHOLD,  # Target stock level
-                'available_g': int(p['total_available']),
-                'shortfall_g': LOW_STOCK_THRESHOLD - int(p['total_available']),
-                'suggested_roast_g': STANDARD_ROAST_GREEN_G,
-                'reason': 'low_stock'
-            })
+                # Create SEPARATE suggestion for each batch (not combined)
+                for batch_num in range(1, batches_needed + 1):
+                    suggestions.append({
+                        'product_id': product_id,
+                        'product_name': product['name'],
+                        'needed_g': needed_g,
+                        'packed_g': int(packed_g),
+                        'roasted_g': int(roasted_g),
+                        'available_g': int(total_available_g),
+                        'shortfall_g': shortfall_g,
+                        'batch_number': batch_num,
+                        'total_batches': batches_needed,
+                        'suggested_roast_g': STANDARD_GREEN_WEIGHT_G,
+                        'expected_output_g': ROASTED_OUTPUT_G,
+                        'reason': 'order_need'
+                    })
 
     return jsonify({
         'status': 'success',
         'suggestions': suggestions,
-        'order_count': len(orders)
+        'order_count': len(orders),
+        'total_products_ordered': len(needs)
     })
 
 

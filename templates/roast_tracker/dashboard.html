@@ -15,7 +15,11 @@
     <div class="stats-grid">
         <div class="stat-card">
             <div class="value">{{ "%.1f"|format(total_available_kg) }} kg</div>
-            <div class="label">Available Stock</div>
+            <div class="label">Roasted (Unpacked)</div>
+        </div>
+        <div class="stat-card">
+            <div class="value">{{ "%.1f"|format(total_packed_kg|default(0)) }} kg</div>
+            <div class="label">Packed (Ready)</div>
         </div>
         <div class="stat-card">
             <div class="value">{{ batches|length }}</div>
@@ -55,6 +59,9 @@
                         <span class="stock-indicator low" style="background: rgba(239, 68, 68, 0.2);">0g - OUT</span>
                         {% else %}
                         <span class="stock-indicator low">{{ product.total_available_g|int }}g</span>
+                        <span style="font-size: 0.75rem; color: var(--gray-500); display: block;">
+                            ({{ product.roasted_available_g|int }}g roasted + {{ product.packed_available_g|int }}g packed)
+                        </span>
                         {% endif %}
                     </td>
                     <td>
@@ -126,6 +133,41 @@
         </p>
         {% endif %}
     </div>
+
+    <!-- Packed Products (Ready to Ship) -->
+    {% if packed_products %}
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Packed Products (Ready to Ship)</h2>
+            <a href="{{ url_for('roast_tracker.inventory') }}" class="btn btn-secondary">View Inventory</a>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>Origin</th>
+                    <th>Level</th>
+                    <th>Size</th>
+                    <th>Quantity</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for product in packed_products %}
+                <tr>
+                    <td>{{ product.product_name }}</td>
+                    <td><span style="color: var(--gray-500);">{{ product.country or 'Unknown' }}</span></td>
+                    <td><span class="roast-badge {{ product.roast_level }}">{{ product.roast_level }}</span></td>
+                    <td>{{ product.package_size_g }}g</td>
+                    <td>
+                        <span style="font-weight: 600;">{{ product.total_quantity }}x</span>
+                        <span style="color: var(--gray-500); font-size: 0.85rem;">({{ product.total_quantity * product.package_size_g }}g)</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
 
     <!-- Recent Production -->
     {% if recent_production %}

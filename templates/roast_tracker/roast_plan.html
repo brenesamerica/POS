@@ -86,6 +86,79 @@
         margin-bottom: 16px;
     }
 
+    /* Modal styles */
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .modal-overlay.active {
+        display: flex;
+    }
+
+    .modal {
+        background: white;
+        border-radius: var(--radius);
+        padding: 24px;
+        max-width: 450px;
+        width: 90%;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .modal h3 {
+        margin: 0 0 8px 0;
+        font-size: 1.2rem;
+    }
+
+    .modal-subtitle {
+        color: var(--gray-500);
+        font-size: 0.9rem;
+        margin-bottom: 20px;
+    }
+
+    .modal .form-group {
+        margin-bottom: 16px;
+    }
+
+    .modal-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: flex-end;
+        margin-top: 24px;
+    }
+
+    .expected-weight {
+        font-size: 0.85rem;
+        color: var(--gray-500);
+        margin-top: 4px;
+    }
+
+    .result-info {
+        background: var(--gray-50);
+        border-radius: var(--radius);
+        padding: 16px;
+        margin-top: 16px;
+    }
+
+    .result-info .lot-number {
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+
+    .result-info .weight-loss {
+        color: var(--gray-600);
+        font-size: 0.9rem;
+    }
+
     @media (max-width: 768px) {
         .plan-card {
             flex-direction: column;
@@ -183,13 +256,10 @@
                 </div>
                 <div class="plan-weight">{{ plan.planned_green_weight_g|int }}g</div>
                 <div class="plan-actions">
-                    <form method="POST" style="display: inline;">
-                        <input type="hidden" name="action" value="complete">
-                        <input type="hidden" name="plan_id" value="{{ plan.id }}">
-                        <button type="submit" class="btn btn-secondary" style="padding: 6px 12px;">
-                            Mark Done
-                        </button>
-                    </form>
+                    <button type="button" class="btn btn-primary" style="padding: 6px 12px;"
+                            onclick="openCompleteModal({{ plan.id }}, '{{ plan.product_name }}', {{ plan.planned_green_weight_g }})">
+                        Mark Done
+                    </button>
                     <form method="POST" style="display: inline;">
                         <input type="hidden" name="action" value="delete">
                         <input type="hidden" name="plan_id" value="{{ plan.id }}">
@@ -237,4 +307,199 @@
     </div>
     {% endif %}
 </div>
+
+<!-- Complete Roast Modal -->
+<div id="completeModal" class="modal-overlay" onclick="if(event.target === this) closeModal()">
+    <div class="modal">
+        <h3>Complete Roast</h3>
+        <div class="modal-subtitle" id="modalProductName">Product Name</div>
+
+        <div id="modalForm">
+            <div class="form-group">
+                <label for="modalRoastDate">Roast Date</label>
+                <input type="date" id="modalRoastDate" value="{{ today }}" required
+                       onchange="updateLotPreview()">
+            </div>
+
+            <div class="form-group">
+                <label for="modalLotNumber">LOT Number</label>
+                <input type="text" id="modalLotNumber" required
+                       style="font-family: monospace; font-weight: 600; font-size: 1.1rem;">
+                <div class="expected-weight" id="lotHint">Auto-generated based on date and roast level</div>
+            </div>
+
+            <div class="form-group">
+                <label for="modalGreenWeight">Green Weight (g)</label>
+                <input type="number" id="modalGreenWeight" readonly style="background: var(--gray-100);">
+            </div>
+
+            <div class="form-group">
+                <label for="modalRoastedWeight">Roasted Weight (g)</label>
+                <input type="number" id="modalRoastedWeight" min="1" step="1" required
+                       oninput="updateExpectedLoss()">
+                <div class="expected-weight" id="expectedWeight">Expected: ~750g (15% loss)</div>
+            </div>
+
+            <div class="form-group">
+                <label for="modalNotes">Notes (optional)</label>
+                <input type="text" id="modalNotes" placeholder="e.g., RoastTime UID, observations...">
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="submitComplete()">
+                    Complete & Add to Inventory
+                </button>
+            </div>
+        </div>
+
+        <div id="modalResult" style="display: none;">
+            <div class="result-info">
+                <div>LOT Number: <span class="lot-number" id="resultLot"></span></div>
+                <div class="weight-loss">Weight loss: <span id="resultLoss"></span>%</div>
+                <div style="margin-top: 8px;">Roasted weight: <span id="resultWeight"></span>g added to inventory</div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-primary" onclick="closeAndReload()">Done</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentPlanId = null;
+    let currentGreenWeight = 0;
+
+    async function openCompleteModal(planId, productName, greenWeight) {
+        currentPlanId = planId;
+        currentGreenWeight = greenWeight;
+
+        document.getElementById('modalProductName').textContent = productName;
+        document.getElementById('modalGreenWeight').value = greenWeight;
+
+        // Set expected roasted weight (assuming ~15% loss)
+        const expectedRoasted = Math.round(greenWeight * 0.85);
+        document.getElementById('modalRoastedWeight').value = expectedRoasted;
+        updateExpectedLoss();
+
+        // Reset to form view
+        document.getElementById('modalForm').style.display = 'block';
+        document.getElementById('modalResult').style.display = 'none';
+
+        // Clear LOT field while loading
+        document.getElementById('modalLotNumber').value = 'Loading...';
+
+        document.getElementById('completeModal').classList.add('active');
+
+        // Fetch LOT preview
+        await updateLotPreview();
+    }
+
+    async function updateLotPreview() {
+        const roastDate = document.getElementById('modalRoastDate').value;
+
+        try {
+            const response = await fetch('{{ url_for("roast_tracker.api_preview_plan_lot") }}', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    plan_id: currentPlanId,
+                    roast_date: roastDate
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                document.getElementById('modalLotNumber').value = data.lot_number;
+                document.getElementById('lotHint').textContent =
+                    `Roast level: ${data.roast_level} | Edit if needed`;
+            } else {
+                document.getElementById('modalLotNumber').value = '';
+                document.getElementById('lotHint').textContent = 'Error generating LOT';
+            }
+        } catch (error) {
+            document.getElementById('modalLotNumber').value = '';
+            document.getElementById('lotHint').textContent = 'Error: ' + error.message;
+        }
+    }
+
+    function closeModal() {
+        document.getElementById('completeModal').classList.remove('active');
+    }
+
+    function closeAndReload() {
+        closeModal();
+        location.reload();
+    }
+
+    function updateExpectedLoss() {
+        const roastedWeight = parseFloat(document.getElementById('modalRoastedWeight').value) || 0;
+        const greenWeight = currentGreenWeight;
+
+        if (greenWeight > 0 && roastedWeight > 0) {
+            const loss = ((greenWeight - roastedWeight) / greenWeight * 100).toFixed(1);
+            document.getElementById('expectedWeight').textContent = `Weight loss: ${loss}%`;
+
+            // Color code based on typical loss range (12-18%)
+            const el = document.getElementById('expectedWeight');
+            if (loss >= 12 && loss <= 18) {
+                el.style.color = 'var(--gray-500)';
+            } else if (loss < 12) {
+                el.style.color = '#2563eb'; // Blue - might need more time
+            } else {
+                el.style.color = '#dc2626'; // Red - might be over-roasted
+            }
+        }
+    }
+
+    async function submitComplete() {
+        const roastedWeight = parseFloat(document.getElementById('modalRoastedWeight').value);
+        const roastDate = document.getElementById('modalRoastDate').value;
+        const lotNumber = document.getElementById('modalLotNumber').value.trim();
+        const notes = document.getElementById('modalNotes').value;
+
+        if (!roastedWeight || roastedWeight <= 0) {
+            alert('Please enter a valid roasted weight');
+            return;
+        }
+
+        if (!lotNumber) {
+            alert('Please enter a LOT number');
+            return;
+        }
+
+        try {
+            const response = await fetch('{{ url_for("roast_tracker.api_complete_plan_with_roast") }}', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    plan_id: currentPlanId,
+                    roasted_weight_g: roastedWeight,
+                    roast_date: roastDate,
+                    lot_number: lotNumber,
+                    notes: notes
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                // Show result
+                document.getElementById('resultLot').textContent = data.lot_number;
+                document.getElementById('resultLoss').textContent = data.weight_loss_percent;
+                document.getElementById('resultWeight').textContent = data.roasted_weight_g;
+
+                document.getElementById('modalForm').style.display = 'none';
+                document.getElementById('modalResult').style.display = 'block';
+            } else {
+                alert('Error: ' + (data.message || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+</script>
 {% endblock %}
