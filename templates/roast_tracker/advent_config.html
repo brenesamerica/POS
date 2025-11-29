@@ -266,12 +266,13 @@
                     <th>Available</th>
                     <th>Needed</th>
                     <th>Status</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>
                 {% for product_id, status in inventory_status.items() %}
                 <tr>
-                    <td>Product #{{ product_id }}</td>
+                    <td>{{ status.product_name }}{% if status.country %} ({{ status.country }}){% endif %}</td>
                     <td>{{ status.available_g|int }}g</td>
                     <td>48g</td>
                     <td>
@@ -279,6 +280,22 @@
                         <span class="stock-indicator high">OK</span>
                         {% else %}
                         <span class="stock-indicator low">Need Roasting</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if not status.enough_for_advent %}
+                        <form method="POST" action="{{ url_for('roast_tracker.roast_plan') }}" style="display: inline;">
+                            <input type="hidden" name="action" value="add">
+                            <input type="hidden" name="product_id" value="{{ product_id }}">
+                            <input type="hidden" name="planned_weight_g" value="888">
+                            <input type="hidden" name="planned_date" value="{{ today }}">
+                            <input type="hidden" name="source" value="advent">
+                            <input type="hidden" name="notes" value="For advent calendar">
+                            <input type="hidden" name="redirect_to" value="{{ url_for('roast_tracker.advent_config') }}">
+                            <button type="submit" class="btn btn-sm btn-primary">Add to Plan</button>
+                        </form>
+                        {% else %}
+                        <span style="color: var(--gray-400);">—</span>
                         {% endif %}
                     </td>
                 </tr>

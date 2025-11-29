@@ -62,8 +62,15 @@
     <!-- Coffee Products (Roasted Profiles) -->
     <div class="card">
         <div class="card-header">
-            <h2 class="card-title">Coffee Products (Roast Profiles)</h2>
-            <button type="button" class="btn btn-primary" onclick="showAddProduct()">+ Add Product</button>
+            <h2 class="card-title">{% if show_archived %}Archived Products{% else %}Coffee Products (Roast Profiles){% endif %}</h2>
+            <div style="display: flex; gap: 8px;">
+                {% if show_archived %}
+                <a href="{{ url_for('roast_tracker.setup_products') }}" class="btn btn-primary">← Active Products</a>
+                {% else %}
+                <a href="{{ url_for('roast_tracker.setup_products', archived='1') }}" class="btn btn-secondary" style="background: var(--gray-200); color: var(--gray-700);">📦 Archived</a>
+                <button type="button" class="btn btn-primary" onclick="showAddProduct()">+ Add Product</button>
+                {% endif %}
+            </div>
         </div>
 
         {% if products %}
@@ -86,6 +93,11 @@
                     <td><span class="roast-badge {{ product.roast_level }}">{{ roast_levels[product.roast_level] }}</span></td>
                     <td>
                         <button type="button" class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.8rem;" onclick="editProduct({{ product.id }})">Edit</button>
+                        {% if show_archived %}
+                        <button type="button" class="btn btn-primary" style="padding: 4px 12px; font-size: 0.8rem;" onclick="unarchiveProduct({{ product.id }})">Restore</button>
+                        {% else %}
+                        <button type="button" class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.8rem; background: var(--warning); color: var(--gray-900);" onclick="archiveProduct({{ product.id }})">Archive</button>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -300,5 +312,31 @@ document.querySelectorAll('.modal').forEach(modal => {
         }
     });
 });
+
+function archiveProduct(id) {
+    if (confirm('Archive this product? It will be hidden from roast entry and production.')) {
+        fetch(`{{ url_for('roast_tracker.archive_product', product_id=0) }}`.replace('0', id), { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    location.reload();
+                } else {
+                    alert('Failed to archive product');
+                }
+            });
+    }
+}
+
+function unarchiveProduct(id) {
+    fetch(`{{ url_for('roast_tracker.unarchive_product', product_id=0) }}`.replace('0', id), { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'success') {
+                location.reload();
+            } else {
+                alert('Failed to restore product');
+            }
+        });
+}
 </script>
 {% endblock %}

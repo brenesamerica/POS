@@ -1,0 +1,132 @@
+{% extends "roast_tracker/base.html" %}
+
+{% block title %}B2B Orders{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>B2B Orders</h1>
+    <a href="{{ url_for('roast_tracker.b2b_order_new') }}" class="btn btn-primary">+ New Order</a>
+</div>
+
+<div class="page-content">
+    <!-- Filters -->
+    <div class="card" style="margin-bottom: 24px;">
+        <form method="GET" style="padding: 16px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+            <div class="form-group" style="margin: 0;">
+                <select name="status" onchange="this.form.submit()">
+                    <option value="">All Statuses</option>
+                    <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Pending</option>
+                    <option value="processing" {% if status_filter == 'processing' %}selected{% endif %}>Processing</option>
+                    <option value="ready" {% if status_filter == 'ready' %}selected{% endif %}>Ready</option>
+                    <option value="shipped" {% if status_filter == 'shipped' %}selected{% endif %}>Shipped</option>
+                    <option value="completed" {% if status_filter == 'completed' %}selected{% endif %}>Completed</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin: 0;">
+                <select name="payment" onchange="this.form.submit()">
+                    <option value="">All Payments</option>
+                    <option value="unpaid" {% if payment_filter == 'unpaid' %}selected{% endif %}>Unpaid</option>
+                    <option value="paid" {% if payment_filter == 'paid' %}selected{% endif %}>Paid</option>
+                </select>
+            </div>
+            <a href="{{ url_for('roast_tracker.b2b_customers') }}" class="btn btn-secondary">Manage Customers</a>
+        </form>
+    </div>
+
+    {% if orders %}
+    <div class="card">
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="border-bottom: 2px solid var(--gray-200);">
+                    <th style="text-align: left; padding: 12px;">Order</th>
+                    <th style="text-align: left; padding: 12px;">Customer</th>
+                    <th style="text-align: left; padding: 12px;">Date</th>
+                    <th style="text-align: center; padding: 12px;">Items</th>
+                    <th style="text-align: center; padding: 12px;">Status</th>
+                    <th style="text-align: center; padding: 12px;">Payment</th>
+                    <th style="text-align: right; padding: 12px;">Total</th>
+                    <th style="text-align: right; padding: 12px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in orders %}
+                {% set is_overdue = order.payment_status == 'unpaid' and order.due_date and order.due_date < today %}
+                <tr style="border-bottom: 1px solid var(--gray-100); {% if is_overdue %}background: rgba(239, 68, 68, 0.05);{% endif %}">
+                    <td style="padding: 12px;">
+                        <span style="font-weight: 600;">#{{ order.id }}</span>
+                    </td>
+                    <td style="padding: 12px;">
+                        <a href="{{ url_for('roast_tracker.b2b_customer_edit', customer_id=order.customer_id) }}" style="text-decoration: none; color: var(--gray-800);">
+                            {{ order.company_name }}
+                        </a>
+                    </td>
+                    <td style="padding: 12px;">
+                        <div>{{ order.order_date }}</div>
+                        <div style="font-size: 0.8rem; color: var(--gray-500);">Due: {{ order.due_date }}</div>
+                    </td>
+                    <td style="padding: 12px; text-align: center;">{{ order.item_count }}</td>
+                    <td style="padding: 12px; text-align: center;">
+                        <span class="status-badge {{ order.status }}">{{ order.status }}</span>
+                    </td>
+                    <td style="padding: 12px; text-align: center;">
+                        <span class="payment-badge {{ order.payment_status }} {% if is_overdue %}overdue{% endif %}">
+                            {% if is_overdue %}OVERDUE{% else %}{{ order.payment_status }}{% endif %}
+                        </span>
+                    </td>
+                    <td style="padding: 12px; text-align: right; font-weight: 600;">
+                        {{ '{:,.0f}'.format(order.total) }} HUF
+                    </td>
+                    <td style="padding: 12px; text-align: right;">
+                        <a href="{{ url_for('roast_tracker.b2b_order_detail', order_id=order.id) }}" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.85rem;">View</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="card" style="text-align: center; padding: 60px 20px; color: var(--gray-500);">
+        <div style="font-size: 48px; margin-bottom: 16px;">📦</div>
+        <h3>No B2B Orders</h3>
+        <p>Create your first B2B order.</p>
+        <a href="{{ url_for('roast_tracker.b2b_order_new') }}" class="btn btn-primary" style="margin-top: 16px;">+ New Order</a>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+    .status-badge {
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        text-transform: capitalize;
+    }
+    .status-badge.pending { background: rgba(234, 179, 8, 0.1); color: #ca8a04; }
+    .status-badge.processing { background: rgba(59, 130, 246, 0.1); color: #2563eb; }
+    .status-badge.ready { background: rgba(34, 197, 94, 0.1); color: #16a34a; }
+    .status-badge.shipped { background: rgba(139, 92, 246, 0.1); color: #7c3aed; }
+    .status-badge.completed { background: rgba(34, 197, 94, 0.2); color: #15803d; }
+    .status-badge.cancelled { background: rgba(239, 68, 68, 0.1); color: #dc2626; }
+
+    .payment-badge {
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        text-transform: capitalize;
+    }
+    .payment-badge.unpaid { background: rgba(234, 179, 8, 0.1); color: #ca8a04; }
+    .payment-badge.paid { background: rgba(34, 197, 94, 0.1); color: #16a34a; }
+    .payment-badge.overdue { background: rgba(239, 68, 68, 0.2); color: #dc2626; font-weight: 700; }
+</style>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function now() {
+        return new Date();
+    }
+</script>
+{% endblock %}

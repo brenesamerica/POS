@@ -280,7 +280,7 @@
         {% if billingo_env == 'test' %}
             <span data-i18n="testEnv">TESZT környezet</span>
         {% else %}
-            <span data-i18n="prodEnv">Élő rendszer</span>
+            <span data-i18n="prodEnv">ÉLES RENDSZER</span>
         {% endif %}
     </div>
 
@@ -291,9 +291,14 @@
     </div>
 
     <nav class="top-nav">
-        <span class="nav-title" data-i18n="manageProductsTitle">☕ Manage Products</span>
+        <span class="nav-title" data-i18n="manageProductsTitle">☕ {% if show_archived %}Archived Products{% else %}Manage Products{% endif %}</span>
         <div class="nav-actions">
+            {% if show_archived %}
+            <a href="{{ url_for('manage_items') }}" class="nav-btn primary" data-i18n="showActive">← Active Products</a>
+            {% else %}
+            <a href="{{ url_for('manage_items', archived='1') }}" class="nav-btn secondary" style="background: var(--gray-200);" data-i18n="showArchived">📦 Archived</a>
             <a href="/add_item" class="nav-btn primary" data-i18n="addProduct">+ Add Product</a>
+            {% endif %}
             <a href="{{ url_for('main_menu') }}" class="nav-btn secondary" data-i18n="backToMenu">← Back to Menu</a>
         </div>
     </nav>
@@ -371,6 +376,11 @@
                     </td>
                     <td>
                         <button onclick="location.href='/edit_item/{{ item[0] }}'">Edit</button>
+                        {% if show_archived %}
+                        <button onclick="unarchiveItem({{ item[0] }})" style="background: var(--success);">Restore</button>
+                        {% else %}
+                        <button onclick="archiveItem({{ item[0] }})" style="background: var(--warning); color: var(--gray-900);">Archive</button>
+                        {% endif %}
                         <button onclick="deleteItem({{ item[0] }})" style="background: var(--danger);">Delete</button>
                     </td>
                 </tr>
@@ -477,17 +487,47 @@
             }
         }
 
+        function archiveItem(id) {
+            if (confirm("Archive this product? It will be hidden from inventory and market mode.")) {
+                fetch(`/archive_item/${id}`, { method: 'POST' })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === "success") {
+                            location.reload();
+                        } else {
+                            alert("Failed to archive the item.");
+                        }
+                    })
+                    .catch(error => console.error("Error:", error));
+            }
+        }
+
+        function unarchiveItem(id) {
+            fetch(`/unarchive_item/${id}`, { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === "success") {
+                        location.reload();
+                    } else {
+                        alert("Failed to restore the item.");
+                    }
+                })
+                .catch(error => console.error("Error:", error));
+        }
+
         // ==================== TRANSLATIONS ====================
         let currentLang = localStorage.getItem('pos_language') || 'hu';
 
         const translations = {
             hu: {
                 testEnv: 'TESZT környezet',
-                prodEnv: 'Élő rendszer',
+                prodEnv: 'ÉLES RENDSZER',
                 manageProductsTitle: '☕ Termékek kezelése',
                 addProduct: '+ Termék hozzáadása',
                 backToMenu: '← Vissza a menübe',
-                searchProducts: '🔍 Termékek keresése...'
+                searchProducts: '🔍 Termékek keresése...',
+                showArchived: '📦 Archivált',
+                showActive: '← Aktív termékek'
             },
             en: {
                 testEnv: 'TEST Environment',
@@ -495,7 +535,9 @@
                 manageProductsTitle: '☕ Manage Products',
                 addProduct: '+ Add Product',
                 backToMenu: '← Back to Menu',
-                searchProducts: '🔍 Search products...'
+                searchProducts: '🔍 Search products...',
+                showArchived: '📦 Archived',
+                showActive: '← Active Products'
             }
         };
 

@@ -1,0 +1,81 @@
+{% extends "roast_tracker/base.html" %}
+
+{% block title %}B2B Customers{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>B2B Customers</h1>
+    <a href="{{ url_for('roast_tracker.b2b_customer_new') }}" class="btn btn-primary">+ New Customer</a>
+</div>
+
+<div class="page-content">
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="value">{{ customers|length }}</div>
+            <div class="label">Active Customers</div>
+        </div>
+        <div class="stat-card">
+            <div class="value">{{ customers|sum(attribute='order_count') }}</div>
+            <div class="label">Total Orders</div>
+        </div>
+    </div>
+
+    {% if customers %}
+    <div class="card">
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="border-bottom: 2px solid var(--gray-200);">
+                    <th style="text-align: left; padding: 12px;">Company</th>
+                    <th style="text-align: left; padding: 12px;">Contact</th>
+                    <th style="text-align: left; padding: 12px;">VAT Number</th>
+                    <th style="text-align: center; padding: 12px;">Discount</th>
+                    <th style="text-align: center; padding: 12px;">Orders</th>
+                    <th style="text-align: right; padding: 12px;">Total Paid</th>
+                    <th style="text-align: right; padding: 12px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for customer in customers %}
+                <tr style="border-bottom: 1px solid var(--gray-100);">
+                    <td style="padding: 12px;">
+                        <div style="font-weight: 600;">{{ customer.company_name }}</div>
+                        {% if customer.city %}
+                        <div style="font-size: 0.85rem; color: var(--gray-500);">{{ customer.city }}, {{ customer.country }}</div>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 12px;">
+                        {% if customer.contact_name %}{{ customer.contact_name }}<br>{% endif %}
+                        <span style="font-size: 0.85rem; color: var(--gray-500);">{{ customer.email or '' }}</span>
+                    </td>
+                    <td style="padding: 12px; font-family: monospace;">{{ customer.vat_number or '-' }}</td>
+                    <td style="padding: 12px; text-align: center;">
+                        {% if customer.default_discount_percent > 0 %}
+                        <span style="background: rgba(34, 197, 94, 0.1); color: #16a34a; padding: 2px 8px; border-radius: 4px; font-size: 0.85rem;">
+                            {{ customer.default_discount_percent }}%
+                        </span>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td style="padding: 12px; text-align: center;">{{ customer.order_count }}</td>
+                    <td style="padding: 12px; text-align: right; font-weight: 500;">
+                        {{ '{:,.0f}'.format(customer.total_paid or 0) }} HUF
+                    </td>
+                    <td style="padding: 12px; text-align: right;">
+                        <a href="{{ url_for('roast_tracker.b2b_customer_edit', customer_id=customer.id) }}" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.85rem;">Edit</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="card" style="text-align: center; padding: 60px 20px; color: var(--gray-500);">
+        <div style="font-size: 48px; margin-bottom: 16px;">🏢</div>
+        <h3>No B2B Customers</h3>
+        <p>Add your first business customer to get started.</p>
+        <a href="{{ url_for('roast_tracker.b2b_customer_new') }}" class="btn btn-primary" style="margin-top: 16px;">+ Add Customer</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

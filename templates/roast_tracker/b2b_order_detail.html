@@ -1,0 +1,822 @@
+{% extends "roast_tracker/base.html" %}
+
+{% block title %}B2B Order #{{ order.id }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Completed item styling */
+    .item-row-completed .product-name {
+        text-decoration: line-through;
+        color: var(--gray-400);
+    }
+
+    .item-row-completed .product-name::before {
+        content: '✓ ';
+        color: #16a34a;
+        font-weight: bold;
+        text-decoration: none;
+    }
+
+    .assigned-lots-display {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-top: 4px;
+    }
+
+    .assigned-lot-badge {
+        background: rgba(34, 197, 94, 0.1);
+        color: #16a34a;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+
+    .lot-selects-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .lot-selects-container.hidden {
+        display: none;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Order #{{ order.id }} - {{ order.company_name }}</h1>
+    <a href="{{ url_for('roast_tracker.b2b_orders') }}" class="btn btn-secondary">← Back to Orders</a>
+</div>
+
+<div class="page-content">
+    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px;">
+        <!-- Order Items -->
+        <div>
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Order Items</h2>
+                </div>
+
+                {% if items %}
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid var(--gray-200);">
+                            <th style="text-align: left; padding: 12px;">Product</th>
+                            <th style="text-align: center; padding: 12px;">Qty</th>
+                            <th style="text-align: right; padding: 12px;">Unit Price</th>
+                            <th style="text-align: center; padding: 12px;">Discount</th>
+                            <th style="text-align: right; padding: 12px;">Total</th>
+                            <th style="text-align: right; padding: 12px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in items %}
+                        {% set pkg_size = item.package_size_g or 250 %}
+                        {% set slots_needed = item.quantity if pkg_size < 250 else ((pkg_size // 250) * item.quantity) %}
+                        {% set item_assignments = assignments_by_item.get(item.id, []) %}
+                        {% set inv_status = item_invoice_status|selectattr('item_id', 'equalto', item.id)|first %}
+                        {% set invoiced_qty = inv_status.invoiced if inv_status else 0 %}
+                        <tr style="border-bottom: 1px solid var(--gray-100);" id="item-row-{{ item.id }}" data-item-id="{{ item.id }}" data-slots-needed="{{ slots_needed }}">
+                            <td style="padding: 12px;">
+                                <div class="product-name" style="font-weight: 500;">{{ item.product_name }}</div>
+                                <div style="font-size: 0.8rem; color: var(--gray-500);">{{ item.package_size_g }}g</div>
+                                {% if invoiced_qty >= item.quantity %}
+                                <span style="background: rgba(34, 197, 94, 0.1); color: #16a34a; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-top: 4px; display: inline-block;">✓ Invoiced</span>
+                                {% elif invoiced_qty > 0 %}
+                                <span style="background: rgba(234, 179, 8, 0.1); color: #ca8a04; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-top: 4px; display: inline-block;">{{ invoiced_qty }}/{{ item.quantity }} Invoiced</span>
+                                {% endif %}
+                            </td>
+                            <td style="padding: 12px; text-align: center;">{{ item.quantity }}</td>
+                            <td style="padding: 12px; text-align: right;">{{ '{:,.0f}'.format(item.unit_price) }} HUF</td>
+                            <td style="padding: 12px; text-align: center;">
+                                {% if item.discount_percent > 0 %}
+                                <span style="background: rgba(34, 197, 94, 0.1); color: #16a34a; padding: 2px 6px; border-radius: 4px; font-size: 0.8rem;">
+                                    -{{ item.discount_percent }}%
+                                </span>
+                                {% else %}-{% endif %}
+                            </td>
+                            <td style="padding: 12px; text-align: right; font-weight: 600;">{{ '{:,.0f}'.format(item.line_total) }} HUF</td>
+                            <td style="padding: 12px; text-align: right;">
+                                <button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.8rem;" onclick="toggleEditRow({{ item.id }})">Edit</button>
+                                <form method="POST" action="{{ url_for('roast_tracker.b2b_order_delete_item', order_id=order.id, item_id=item.id) }}" style="display: inline;">
+                                    <button type="submit" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.8rem;">Remove</button>
+                                </form>
+                            </td>
+                        </tr>
+                        <!-- Edit Row (hidden by default) -->
+                        <tr id="edit-row-{{ item.id }}" style="display: none; background: rgba(59, 130, 246, 0.05);">
+                            <td colspan="6" style="padding: 12px;">
+                                <form method="POST" action="{{ url_for('roast_tracker.b2b_order_edit_item', order_id=order.id, item_id=item.id) }}" style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+                                    <div style="flex: 2; min-width: 150px;">
+                                        <label style="font-size: 0.75rem; color: var(--gray-500);">Product Name</label>
+                                        <input type="text" name="product_name" value="{{ item.product_name }}" required style="width: 100%; padding: 6px 8px; font-size: 0.85rem;">
+                                    </div>
+                                    <div style="width: 80px;">
+                                        <label style="font-size: 0.75rem; color: var(--gray-500);">Size (g)</label>
+                                        <input type="number" name="package_size_g" value="{{ item.package_size_g }}" required style="width: 100%; padding: 6px 8px; font-size: 0.85rem;">
+                                    </div>
+                                    <div style="width: 60px;">
+                                        <label style="font-size: 0.75rem; color: var(--gray-500);">Qty</label>
+                                        <input type="number" name="quantity" value="{{ item.quantity }}" min="1" required style="width: 100%; padding: 6px 8px; font-size: 0.85rem;">
+                                    </div>
+                                    <div style="width: 100px;">
+                                        <label style="font-size: 0.75rem; color: var(--gray-500);">Unit Price</label>
+                                        <input type="number" name="unit_price" value="{{ item.unit_price }}" required style="width: 100%; padding: 6px 8px; font-size: 0.85rem;">
+                                    </div>
+                                    <div style="width: 70px;">
+                                        <label style="font-size: 0.75rem; color: var(--gray-500);">Disc %</label>
+                                        <input type="number" name="discount_percent" value="{{ item.discount_percent }}" min="0" max="100" step="0.5" style="width: 100%; padding: 6px 8px; font-size: 0.85rem;">
+                                    </div>
+                                    <div style="display: flex; gap: 8px;">
+                                        <button type="submit" class="btn btn-primary" style="padding: 6px 12px; font-size: 0.85rem;">Save</button>
+                                        <button type="button" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.85rem;" onclick="toggleEditRow({{ item.id }})">Cancel</button>
+                                    </div>
+                                </form>
+                            </td>
+                        </tr>
+                        <!-- LOT Assignment Row -->
+                        <tr style="background: var(--gray-50);" id="lot-row-{{ item.id }}">
+                            <td colspan="6" style="padding: 8px 12px;">
+                                <!-- Assigned LOTs display (shown when all assigned) -->
+                                <div class="assigned-lots-display" id="lots-display-{{ item.id }}" style="display: none;">
+                                    <span style="font-size: 0.8rem; color: var(--gray-500); margin-right: 8px;">LOT:</span>
+                                    <!-- Will be populated by JavaScript -->
+                                </div>
+
+                                <!-- LOT selects container (hidden when all assigned) -->
+                                <div class="lot-selects-container" id="lots-selects-{{ item.id }}">
+                                    <span style="font-size: 0.8rem; color: var(--gray-500); margin-right: 8px;">LOT:</span>
+                                    {% for slot in range(1, slots_needed + 1) %}
+                                    {% set slot_assignment = item_assignments|selectattr('slot_number', 'equalto', slot)|first %}
+                                    <div style="display: flex; align-items: center; gap: 4px; background: white; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--gray-200);">
+                                        <span style="font-size: 0.7rem; color: var(--gray-500);">#{{ slot }}:</span>
+                                        <select class="lot-select"
+                                                data-order-id="B2B-{{ order.id }}"
+                                                data-item-id="{{ item.id }}"
+                                                data-slot="{{ slot }}"
+                                                data-item-name="{{ item.product_name|lower }}"
+                                                onchange="assignLot(this)"
+                                                style="padding: 2px 6px; font-size: 0.8rem; border: 1px solid var(--gray-300); border-radius: 4px; min-width: 150px; {% if slot_assignment %}border-color: #16a34a; background: rgba(34, 197, 94, 0.05);{% endif %}">
+                                            <option value="">Select LOT...</option>
+                                            {% if slot_assignment %}
+                                            <option value="{{ slot_assignment.production_batch_id }}" selected>
+                                                {{ slot_assignment.source_lot }} - {{ slot_assignment.product_name }} ({{ slot_assignment.package_size_g }}g)
+                                            </option>
+                                            {% endif %}
+                                        </select>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr style="border-top: 2px solid var(--gray-300);">
+                            <td colspan="4" style="padding: 12px; text-align: right;">Subtotal:</td>
+                            <td style="padding: 12px; text-align: right;">{{ '{:,.0f}'.format(order.subtotal) }} HUF</td>
+                            <td></td>
+                        </tr>
+                        {% if order.discount_total > 0 %}
+                        <tr>
+                            <td colspan="4" style="padding: 8px 12px; text-align: right; color: #16a34a;">Discount:</td>
+                            <td style="padding: 8px 12px; text-align: right; color: #16a34a;">-{{ '{:,.0f}'.format(order.discount_total) }} HUF</td>
+                            <td></td>
+                        </tr>
+                        {% endif %}
+                        <tr>
+                            <td colspan="4" style="padding: 12px; text-align: right; font-weight: 700; font-size: 1.1rem;">Total:</td>
+                            <td style="padding: 12px; text-align: right; font-weight: 700; font-size: 1.1rem;">{{ '{:,.0f}'.format(order.total) }} HUF</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+                {% else %}
+                <div style="padding: 40px; text-align: center; color: var(--gray-500);">
+                    No items in this order yet.
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Add Item Form -->
+            <div class="card" style="margin-top: 24px;">
+                <div class="card-header">
+                    <h2 class="card-title">Add Item</h2>
+                </div>
+                <form method="POST" action="{{ url_for('roast_tracker.b2b_order_add_item', order_id=order.id) }}" style="padding: 20px;">
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 2;">
+                            <label>Product</label>
+                            <select name="product_id" id="product_select" onchange="updateProductDetails()">
+                                <option value="">Select product...</option>
+                                {% for product in products %}
+                                <option value="{{ product.id }}"
+                                        data-name="{{ product.name }}"
+                                        data-price="{{ product.price or 0 }}"
+                                        data-discount="{{ discount_map.get(product.id, order.default_discount_percent) }}">
+                                    {{ product.category_name or 'Uncategorized' }} - {{ product.name }}{% if product.price %} ({{ '{:,.0f}'.format(product.price) }} HUF){% endif %}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Quantity</label>
+                            <input type="number" name="quantity" id="quantity" value="1" min="1" onchange="updateTotal()">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Product Name</label>
+                            <input type="text" name="product_name" id="product_name" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Package Size (g)</label>
+                            <input type="number" name="package_size_g" id="package_size" value="250">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Unit Price (HUF)</label>
+                            <input type="number" name="unit_price" id="unit_price" required onchange="updateTotal()">
+                        </div>
+                        <div class="form-group">
+                            <label>Discount (%)</label>
+                            <input type="number" name="discount_percent" id="discount_percent" value="{{ order.default_discount_percent }}" min="0" max="100" step="0.5" onchange="updateTotal()">
+                        </div>
+                        <div class="form-group">
+                            <label>Line Total</label>
+                            <input type="text" id="line_total_display" readonly style="background: var(--gray-100);">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">Add Item</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div>
+            <!-- Order Info -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Order Details</h2>
+                </div>
+                <div style="padding: 16px;">
+                    <div style="margin-bottom: 16px;">
+                        <div style="font-size: 0.85rem; color: var(--gray-500);">Customer</div>
+                        <div style="font-weight: 500;">{{ order.company_name }}</div>
+                        {% if order.vat_number %}
+                        <div style="font-size: 0.85rem; font-family: monospace;">{{ order.vat_number }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div style="margin-bottom: 16px;">
+                        <div style="font-size: 0.85rem; color: var(--gray-500);">Order Date</div>
+                        <div>{{ order.order_date }}</div>
+                    </div>
+
+                    <div style="margin-bottom: 16px;">
+                        <div style="font-size: 0.85rem; color: var(--gray-500);">Due Date</div>
+                        <div>{{ order.due_date }}</div>
+                    </div>
+
+                    {% if order.notes %}
+                    <div style="margin-bottom: 16px;">
+                        <div style="font-size: 0.85rem; color: var(--gray-500);">Notes</div>
+                        <div style="font-size: 0.9rem;">{{ order.notes }}</div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Status Controls -->
+            <div class="card" style="margin-top: 16px;">
+                <div class="card-header">
+                    <h2 class="card-title">Status</h2>
+                </div>
+                <div style="padding: 16px;">
+                    <form method="POST" action="{{ url_for('roast_tracker.b2b_order_status', order_id=order.id) }}">
+                        <div class="form-group">
+                            <label>Order Status</label>
+                            <select name="status" onchange="this.form.submit()">
+                                <option value="pending" {% if order.status == 'pending' %}selected{% endif %}>Pending</option>
+                                <option value="consignment" {% if order.status == 'consignment' %}selected{% endif %}>Consignment</option>
+                                <option value="processing" {% if order.status == 'processing' %}selected{% endif %}>Processing</option>
+                                <option value="ready" {% if order.status == 'ready' %}selected{% endif %}>Ready</option>
+                                <option value="shipped" {% if order.status == 'shipped' %}selected{% endif %}>Shipped</option>
+                                <option value="completed" {% if order.status == 'completed' %}selected{% endif %}>Completed</option>
+                                <option value="cancelled" {% if order.status == 'cancelled' %}selected{% endif %}>Cancelled</option>
+                            </select>
+                        </div>
+                    </form>
+
+                    <div class="form-group" style="margin-top: 12px;">
+                        <label>Payment Status</label>
+                        <div style="padding: 8px 12px; border-radius: 4px; font-weight: 500; text-align: center;
+                            {% if calculated_payment_status == 'paid' %}
+                            background: rgba(34, 197, 94, 0.1); color: #16a34a;
+                            {% elif calculated_payment_status == 'partially_paid' %}
+                            background: rgba(234, 179, 8, 0.1); color: #ca8a04;
+                            {% else %}
+                            background: rgba(239, 68, 68, 0.1); color: #dc2626;
+                            {% endif %}">
+                            {% if calculated_payment_status == 'paid' %}✓ Paid
+                            {% elif calculated_payment_status == 'partially_paid' %}◐ Partially Paid
+                            {% else %}○ Unpaid{% endif %}
+                        </div>
+                        {% if invoices %}
+                        <p style="font-size: 0.75rem; color: var(--gray-500); margin-top: 4px; text-align: center;">
+                            Update payment status on individual invoices below
+                        </p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Invoice -->
+            <div class="card" style="margin-top: 16px;">
+                <div class="card-header">
+                    <h2 class="card-title">Invoices</h2>
+                </div>
+                <div style="padding: 16px;">
+                    <!-- Existing Invoices -->
+                    {% if invoices %}
+                    <div style="margin-bottom: 16px;">
+                        {% for inv in invoices %}
+                        <div style="padding: 8px; background: {% if inv.payment_status == 'paid' %}rgba(34, 197, 94, 0.05){% else %}rgba(234, 179, 8, 0.05){% endif %}; border-radius: 4px; margin-bottom: 8px; border-left: 3px solid {% if inv.payment_status == 'paid' %}#16a34a{% else %}#ca8a04{% endif %};">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="color: {% if inv.payment_status == 'paid' %}#16a34a{% else %}#ca8a04{% endif %}; font-weight: 500;">#{{ inv.billingo_document_id }}</span>
+                                    <span style="font-size: 0.8rem; color: var(--gray-500);">{{ inv.invoiced_at[:10] if inv.invoiced_at else '' }}</span>
+                                    <form method="POST" action="{{ url_for('roast_tracker.b2b_invoice_payment_status', order_id=order.id, document_id=inv.billingo_document_id) }}" style="display: inline;">
+                                        <select name="payment_status" onchange="this.form.submit()" style="padding: 2px 4px; font-size: 0.75rem; border-radius: 4px; border: 1px solid {% if inv.payment_status == 'paid' %}#16a34a{% else %}#ca8a04{% endif %}; background: {% if inv.payment_status == 'paid' %}rgba(34, 197, 94, 0.1){% else %}rgba(234, 179, 8, 0.1){% endif %}; color: {% if inv.payment_status == 'paid' %}#16a34a{% else %}#ca8a04{% endif %}; cursor: pointer;">
+                                            <option value="unpaid" {% if inv.payment_status != 'paid' %}selected{% endif %}>Unpaid</option>
+                                            <option value="paid" {% if inv.payment_status == 'paid' %}selected{% endif %}>Paid</option>
+                                        </select>
+                                    </form>
+                                </div>
+                                <div style="display: flex; gap: 4px;">
+                                    <a href="{{ url_for('roast_tracker.b2b_download_invoice_by_id', document_id=inv.billingo_document_id) }}" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;">PDF</a>
+                                    <button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.75rem; color: #dc2626;" onclick="toggleCancelForm({{ inv.billingo_document_id }})">Sztornó</button>
+                                </div>
+                            </div>
+                            <!-- Cancel form (hidden by default) -->
+                            <div id="cancel-form-{{ inv.billingo_document_id }}" style="display: none; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--gray-200);">
+                                <form method="POST" action="{{ url_for('roast_tracker.b2b_cancel_invoice_by_id', order_id=order.id, document_id=inv.billingo_document_id) }}">
+                                    <div style="margin-bottom: 8px;">
+                                        <textarea name="cancellation_reason" required placeholder="Cancellation reason..." rows="2" style="width: 100%; padding: 8px; font-size: 0.85rem; border: 1px solid var(--gray-300); border-radius: 4px; resize: vertical;"></textarea>
+                                    </div>
+                                    <button type="submit" class="btn" style="width: 100%; padding: 6px 12px; font-size: 0.85rem; background: #dc2626; color: white;" onclick="return confirm('Cancel this invoice?')">Confirm Cancellation</button>
+                                </form>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    <!-- Invoice Status Summary -->
+                    {% set total_qty = items|sum(attribute='quantity') %}
+                    {% set invoiced_qty = item_invoice_status|sum(attribute='invoiced') %}
+                    {% if invoiced_qty >= total_qty %}
+                    <div style="background: rgba(34, 197, 94, 0.1); color: #16a34a; padding: 12px; border-radius: 8px; text-align: center; margin-bottom: 12px;">
+                        <strong>✓ Fully Invoiced</strong>
+                    </div>
+                    {% elif invoiced_qty > 0 %}
+                    <div style="background: rgba(234, 179, 8, 0.1); color: #ca8a04; padding: 12px; border-radius: 8px; text-align: center; margin-bottom: 12px;">
+                        <strong>Partially Invoiced</strong> ({{ invoiced_qty }}/{{ total_qty }} items)
+                    </div>
+                    {% endif %}
+
+                    <!-- Create New Invoice -->
+                    {% if invoiced_qty < total_qty %}
+                    <div style="border-top: 1px solid var(--gray-200); padding-top: 12px;">
+                        <div style="margin-bottom: 12px;">
+                            <strong style="font-size: 0.9rem;">Create Invoice</strong>
+                        </div>
+
+                        {% if order.status == 'consignment' %}
+                        <!-- Consignment: Only partial invoicing (select items) -->
+                        <form id="partialInvoiceForm" method="POST" action="{{ url_for('roast_tracker.b2b_order_generate_partial_invoice', order_id=order.id) }}">
+                            <input type="hidden" name="invoice_mode" value="partial">
+                            <div class="form-group" style="margin-bottom: 12px;">
+                                <label style="font-size: 0.85rem;">Payment Method</label>
+                                <select name="payment_method" style="width: 100%;">
+                                    <option value="wire_transfer">Átutalás (Wire Transfer)</option>
+                                    <option value="bankcard">Bankkártya (Bank Card)</option>
+                                    <option value="cash">Készpénz (Cash)</option>
+                                </select>
+                            </div>
+
+                            <div style="margin-bottom: 12px;">
+                                <label style="font-size: 0.85rem; display: block; margin-bottom: 8px;">Select Items to Invoice:</label>
+                                {% for item in items %}
+                                {% set inv_status = item_invoice_status|selectattr('item_id', 'equalto', item.id)|first %}
+                                {% set remaining = item.quantity - (inv_status.invoiced if inv_status else 0) %}
+                                {% if remaining > 0 %}
+                                <div style="background: var(--gray-50); padding: 8px; border-radius: 4px; margin-bottom: 8px;" id="invoice-item-{{ item.id }}">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; flex: 1;">
+                                            <input type="checkbox" name="item_ids" value="{{ item.id }}" onchange="toggleItemQuantity({{ item.id }}, this.checked)">
+                                            <span style="font-size: 0.85rem;">{{ item.product_name }}</span>
+                                        </label>
+                                        <span style="font-size: 0.8rem; color: var(--gray-500);">{{ remaining }} available</span>
+                                    </div>
+                                    <div id="item-qty-{{ item.id }}" style="display: none; margin-top: 8px; padding-left: 24px;">
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <label style="font-size: 0.8rem;">Qty:</label>
+                                            <input type="number" name="qty_{{ item.id }}" min="1" max="{{ remaining }}" value="1" style="width: 60px; padding: 4px; font-size: 0.85rem;">
+                                            {% if remaining > 1 %}
+                                            <button type="button" class="btn btn-secondary" style="padding: 2px 6px; font-size: 0.7rem;" onclick="showLotSelector({{ item.id }}, {{ remaining }})">Select LOTs</button>
+                                            {% endif %}
+                                        </div>
+                                        <div id="lot-selector-{{ item.id }}" style="display: none; margin-top: 8px;">
+                                            <!-- LOT checkboxes will be populated here -->
+                                        </div>
+                                        <input type="hidden" name="lots_{{ item.id }}" id="lots-input-{{ item.id }}" value="">
+                                    </div>
+                                </div>
+                                {% endif %}
+                                {% endfor %}
+                            </div>
+
+                            <button type="submit" class="btn btn-primary" style="width: 100%;">Create Partial Invoice</button>
+                        </form>
+                        {% else %}
+                        <!-- Normal orders: Full invoice only -->
+                        <form id="fullInvoiceForm" method="POST" action="{{ url_for('roast_tracker.b2b_order_generate_invoice', order_id=order.id) }}">
+                            <input type="hidden" name="invoice_mode" value="full">
+                            <div class="form-group" style="margin-bottom: 12px;">
+                                <label style="font-size: 0.85rem;">Payment Method</label>
+                                <select name="payment_method" style="width: 100%;">
+                                    <option value="wire_transfer">Átutalás (Wire Transfer)</option>
+                                    <option value="bankcard">Bankkártya (Bank Card)</option>
+                                    <option value="cash">Készpénz (Cash)</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-primary" style="width: 100%;">Invoice All Remaining Items</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+
+                    <!-- Legacy invoice actions for orders with old single invoice -->
+                    {% if order.billingo_document_id and not invoices %}
+                    <div style="border-top: 1px solid var(--gray-200); padding-top: 12px; margin-top: 12px;">
+                        <p style="color: #16a34a; font-weight: 500; margin-bottom: 12px;">
+                            <span style="font-size: 1.2rem;">✓</span> Invoice #{{ order.billingo_document_id }}
+                        </p>
+                        <a href="{{ url_for('roast_tracker.b2b_order_download_invoice', order_id=order.id) }}" class="btn btn-secondary" style="width: 100%; margin-bottom: 8px;">Download PDF</a>
+
+                        <details style="margin-top: 12px;">
+                            <summary style="cursor: pointer; font-size: 0.85rem; color: #dc2626;">Sztornó / Cancel Invoice</summary>
+                            <form method="POST" action="{{ url_for('roast_tracker.b2b_order_cancel_invoice', order_id=order.id) }}" style="margin-top: 8px;">
+                                <div class="form-group" style="margin-bottom: 8px;">
+                                    <label style="font-size: 0.8rem; color: var(--gray-600);">Cancellation Reason *</label>
+                                    <input type="text" name="cancellation_reason" required placeholder="Reason for cancellation..." style="width: 100%; font-size: 0.85rem;">
+                                </div>
+                                <button type="submit" class="btn" style="width: 100%; font-size: 0.85rem; background: #dc2626; color: white;" onclick="return confirm('Are you sure you want to cancel this invoice? This cannot be undone.')">Cancel Invoice (Sztornó)</button>
+                            </form>
+                        </details>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let availablePackedLots = [];
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', async () => {
+        await loadAvailablePackedLots();
+        populateLotSelects();
+        checkCompletedItems();
+    });
+
+    async function loadAvailablePackedLots() {
+        try {
+            const response = await fetch('{{ url_for("roast_tracker.api_available_packed_lots") }}');
+            const data = await response.json();
+            if (data.status === 'success') {
+                availablePackedLots = data.lots;
+            }
+        } catch (error) {
+            console.error('Error loading available packed lots:', error);
+        }
+    }
+
+    function populateLotSelects() {
+        const selects = document.querySelectorAll('.lot-select');
+        selects.forEach(select => {
+            const itemName = (select.dataset.itemName || '').toLowerCase().trim();
+            const currentValue = select.value;
+
+            // Filter PACKED LOTs to only show those matching the order item
+            const matchingLots = availablePackedLots.filter(lot => {
+                const productName = (lot.product_name || '').toLowerCase().trim();
+                const country = (lot.country || '').toLowerCase().trim();
+                const roastLevel = (lot.roast_level || '').toLowerCase().trim();
+
+                if (!productName) return false;
+
+                // Exact match
+                if (itemName.includes(productName)) return true;
+
+                // Country + roast level match
+                if (country && itemName.includes(country)) {
+                    const hasMatchingRoast =
+                        (roastLevel === 'v' && (itemName.includes('vilá') || itemName.includes('light') || itemName.includes(' v '))) ||
+                        (roastLevel === 'k' && (itemName.includes('közép') || itemName.includes('medium') || itemName.includes(' k '))) ||
+                        (roastLevel === 's' && (itemName.includes('sötét') || itemName.includes('dark') || itemName.includes(' s ')));
+                    if (hasMatchingRoast) return true;
+                }
+
+                return false;
+            });
+
+            // Build options HTML, preserving current selection if it exists
+            let html = '<option value="">Select LOT...</option>';
+            matchingLots.forEach(lot => {
+                const productNameTrimmed = (lot.product_name || '').trim();
+                html += `<option value="${lot.production_batch_id}">${lot.source_lot} - ${productNameTrimmed} (${lot.package_size_g}g × ${lot.available_quantity})</option>`;
+            });
+
+            // Only update if not already assigned (to preserve existing assignments)
+            if (!currentValue) {
+                select.innerHTML = html;
+            } else {
+                // Add new options but keep current selection
+                const currentOptionText = select.options[select.selectedIndex]?.text;
+                select.innerHTML = html;
+                // Try to restore selection
+                for (let i = 0; i < select.options.length; i++) {
+                    if (select.options[i].value === currentValue) {
+                        select.selectedIndex = i;
+                        break;
+                    }
+                }
+                // If not found in new options, add the current assignment back
+                if (select.value !== currentValue && currentValue) {
+                    const option = document.createElement('option');
+                    option.value = currentValue;
+                    option.text = currentOptionText || `LOT ${currentValue} [assigned]`;
+                    option.selected = true;
+                    select.appendChild(option);
+                }
+            }
+        });
+    }
+
+    async function assignLot(selectElement) {
+        const orderId = selectElement.dataset.orderId;
+        const itemId = parseInt(selectElement.dataset.itemId);
+        const slot = parseInt(selectElement.dataset.slot);
+        const productionBatchId = selectElement.value;
+
+        if (!productionBatchId) {
+            // Remove assignment
+            try {
+                await fetch('{{ url_for("roast_tracker.api_remove_lot_assignment") }}', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        order_id: orderId,
+                        order_item_id: itemId,
+                        slot_number: slot
+                    })
+                });
+                selectElement.style.borderColor = 'var(--gray-300)';
+                selectElement.style.background = 'white';
+                // Reload to update available quantities
+                await loadAvailablePackedLots();
+                populateLotSelects();
+                checkCompletedItems();
+            } catch (error) {
+                console.error('Error removing assignment:', error);
+            }
+            return;
+        }
+
+        try {
+            const response = await fetch('{{ url_for("roast_tracker.api_assign_lot") }}', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    order_id: orderId,
+                    order_item_id: itemId,
+                    slot_number: slot,
+                    production_batch_id: parseInt(productionBatchId)
+                })
+            });
+
+            const data = await response.json();
+            if (data.status === 'success') {
+                selectElement.style.borderColor = '#16a34a';
+                selectElement.style.background = 'rgba(34, 197, 94, 0.05)';
+                // Reload to update available quantities
+                await loadAvailablePackedLots();
+                populateLotSelects();
+                checkCompletedItems();
+            } else {
+                alert('Error: ' + (data.message || 'Unknown error'));
+                selectElement.value = '';
+            }
+        } catch (error) {
+            console.error('Error assigning lot:', error);
+            alert('Error assigning LOT');
+            selectElement.value = '';
+        }
+    }
+
+    function updateProductDetails() {
+        const select = document.getElementById('product_select');
+        const option = select.options[select.selectedIndex];
+
+        if (option.value) {
+            document.getElementById('product_name').value = option.dataset.name;
+            document.getElementById('unit_price').value = option.dataset.price;
+            document.getElementById('discount_percent').value = option.dataset.discount;
+            updateTotal();
+        }
+    }
+
+    function updateTotal() {
+        const quantity = parseInt(document.getElementById('quantity').value) || 0;
+        const unitPrice = parseFloat(document.getElementById('unit_price').value) || 0;
+        const discount = parseFloat(document.getElementById('discount_percent').value) || 0;
+
+        const discountedPrice = unitPrice * (1 - discount / 100);
+        const total = discountedPrice * quantity;
+
+        document.getElementById('line_total_display').value = total.toLocaleString('hu-HU') + ' HUF';
+    }
+
+    // Initialize
+    updateTotal();
+
+    function toggleEditRow(itemId) {
+        const editRow = document.getElementById(`edit-row-${itemId}`);
+        const lotsDisplay = document.getElementById(`lots-display-${itemId}`);
+        const lotsSelects = document.getElementById(`lots-selects-${itemId}`);
+
+        if (editRow.style.display === 'none') {
+            // Hide all other edit rows first
+            document.querySelectorAll('[id^="edit-row-"]').forEach(row => {
+                row.style.display = 'none';
+            });
+            editRow.style.display = 'table-row';
+
+            // Also show LOT selects when editing
+            if (lotsDisplay) lotsDisplay.style.display = 'none';
+            if (lotsSelects) lotsSelects.style.display = 'flex';
+        } else {
+            editRow.style.display = 'none';
+            // Restore completed state if applicable
+            checkCompletedItems();
+        }
+    }
+
+    function checkCompletedItems() {
+        // Check each item row to see if all LOT slots are assigned
+        document.querySelectorAll('tr[id^="item-row-"]').forEach(row => {
+            const itemId = row.dataset.itemId;
+            const slotsNeeded = parseInt(row.dataset.slotsNeeded) || 0;
+
+            if (slotsNeeded === 0) return;
+
+            const lotsSelectsContainer = document.getElementById(`lots-selects-${itemId}`);
+            const lotsDisplayContainer = document.getElementById(`lots-display-${itemId}`);
+
+            if (!lotsSelectsContainer || !lotsDisplayContainer) return;
+
+            const selects = lotsSelectsContainer.querySelectorAll('.lot-select');
+            const allAssigned = Array.from(selects).every(s => s.value && s.value !== '');
+
+            if (allAssigned && selects.length > 0) {
+                // Mark row as completed
+                row.classList.add('item-row-completed');
+
+                // Build the display of assigned LOTs
+                let displayHtml = '<span style="font-size: 0.8rem; color: var(--gray-500); margin-right: 8px;">LOT:</span>';
+                selects.forEach(select => {
+                    const selectedOption = select.options[select.selectedIndex];
+                    if (selectedOption && selectedOption.value) {
+                        // Extract just the LOT number from the option text (before the first ' - ')
+                        const lotText = selectedOption.textContent.split(' - ')[0].trim();
+                        displayHtml += `<span class="assigned-lot-badge">${lotText}</span>`;
+                    }
+                });
+                lotsDisplayContainer.innerHTML = displayHtml;
+
+                // Show display, hide selects
+                lotsDisplayContainer.style.display = 'flex';
+                lotsSelectsContainer.style.display = 'none';
+            } else {
+                // Not complete - show selects
+                row.classList.remove('item-row-completed');
+                lotsDisplayContainer.style.display = 'none';
+                lotsSelectsContainer.style.display = 'flex';
+            }
+        });
+    }
+
+    // Invoice mode toggle
+    function toggleInvoiceMode(mode) {
+        const fullForm = document.getElementById('fullInvoiceForm');
+        const partialForm = document.getElementById('partialInvoiceForm');
+
+        if (mode === 'full') {
+            fullForm.style.display = 'block';
+            partialForm.style.display = 'none';
+        } else {
+            fullForm.style.display = 'none';
+            partialForm.style.display = 'block';
+        }
+    }
+
+    // Toggle cancel form for individual invoice
+    function toggleCancelForm(documentId) {
+        const form = document.getElementById(`cancel-form-${documentId}`);
+        if (form) {
+            form.style.display = form.style.display === 'none' ? 'block' : 'none';
+        }
+    }
+
+    // Toggle item quantity input when checkbox is checked
+    function toggleItemQuantity(itemId, checked) {
+        const qtyDiv = document.getElementById(`item-qty-${itemId}`);
+        if (qtyDiv) {
+            qtyDiv.style.display = checked ? 'block' : 'none';
+        }
+    }
+
+    // Show LOT selector for an item
+    function showLotSelector(itemId, maxQty) {
+        const selectorDiv = document.getElementById(`lot-selector-${itemId}`);
+        if (!selectorDiv) return;
+
+        // Get assigned LOTs for this item from the page
+        const lotRow = document.getElementById(`lot-row-${itemId}`);
+        if (!lotRow) return;
+
+        const selects = lotRow.querySelectorAll('.lot-select');
+        const assignedLots = [];
+
+        selects.forEach((select, idx) => {
+            if (select.value) {
+                const optionText = select.options[select.selectedIndex]?.textContent || '';
+                const lotNumber = optionText.split(' - ')[0].trim();
+                assignedLots.push({
+                    slot: idx + 1,
+                    lotNumber: lotNumber,
+                    productionBatchId: select.value
+                });
+            }
+        });
+
+        if (assignedLots.length === 0) {
+            selectorDiv.innerHTML = '<p style="font-size: 0.8rem; color: var(--gray-500);">No LOTs assigned to this item yet.</p>';
+            selectorDiv.style.display = 'block';
+            return;
+        }
+
+        // Build checkboxes for each assigned LOT
+        let html = '<div style="font-size: 0.8rem; color: var(--gray-600); margin-bottom: 4px;">Select which LOTs to invoice:</div>';
+        assignedLots.forEach(lot => {
+            html += `
+                <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px; cursor: pointer;">
+                    <input type="checkbox" class="lot-checkbox-${itemId}" value="${lot.lotNumber}" data-batch-id="${lot.productionBatchId}" onchange="updateLotsInput(${itemId})">
+                    <span style="font-size: 0.8rem;">${lot.lotNumber}</span>
+                </label>
+            `;
+        });
+
+        selectorDiv.innerHTML = html;
+        selectorDiv.style.display = 'block';
+    }
+
+    // Update hidden input with selected LOT numbers
+    function updateLotsInput(itemId) {
+        const checkboxes = document.querySelectorAll(`.lot-checkbox-${itemId}:checked`);
+        const lots = Array.from(checkboxes).map(cb => cb.value);
+        const input = document.getElementById(`lots-input-${itemId}`);
+        if (input) {
+            input.value = JSON.stringify(lots);
+        }
+
+        // Also update quantity to match number of selected LOTs
+        const qtyInput = document.querySelector(`input[name="qty_${itemId}"]`);
+        if (qtyInput && lots.length > 0) {
+            qtyInput.value = lots.length;
+        }
+    }
+</script>
+{% endblock %}

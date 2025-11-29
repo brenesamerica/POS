@@ -16,15 +16,26 @@
             </div>
 
             {% if batches %}
-            <div class="batch-grid">
+            <div style="padding: 16px;">
+                {% set current_country = namespace(value='') %}
                 {% for batch in batches %}
+                {% set batch_country = batch.country or 'Unknown origin' %}
+                {% if batch_country != current_country.value %}
+                    {% if current_country.value != '' %}
+                    </div><!-- close previous country grid -->
+                    {% endif %}
+                    <h3 style="margin: 20px 0 12px 0; padding-bottom: 8px; border-bottom: 2px solid var(--roast-medium); color: var(--gray-700);">
+                        {{ batch_country }}
+                    </h3>
+                    <div class="batch-grid">
+                    {% set current_country.value = batch_country %}
+                {% endif %}
                 <div class="batch-card {% if request.args.get('batch_id')|int == batch.id %}selected{% endif %}"
                      onclick="selectBatch({{ batch.id }}, '{{ batch.lot_number }}', {{ batch.available_weight_g }}, '{{ batch.roast_level }}')"
                      data-batch-id="{{ batch.id }}">
                     <div class="header">
                         <div>
                             <div class="product-name">{{ batch.product_name }}</div>
-                            <div class="country">{{ batch.country or 'Unknown origin' }}</div>
                         </div>
                         <span class="roast-badge {{ batch.roast_level }}">{{ batch.roast_level }}</span>
                     </div>
@@ -45,6 +56,7 @@
                     </div>
                 </div>
                 {% endfor %}
+                </div><!-- close last country grid -->
             </div>
             {% else %}
             <p style="text-align: center; color: var(--gray-500); padding: 40px;">
@@ -181,6 +193,11 @@
         document.getElementById('step3').style.display = 'none';
         selectedType = null;
         document.querySelectorAll('.production-option').forEach(opt => opt.classList.remove('selected'));
+
+        // Scroll to step 2
+        setTimeout(() => {
+            document.getElementById('step2').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
     }
 
     function selectType(type) {
@@ -204,6 +221,11 @@
         }
 
         updateTotal();
+
+        // Scroll to step 3
+        setTimeout(() => {
+            document.getElementById('step3').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
     }
 
     function updateTotal() {

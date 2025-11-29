@@ -73,6 +73,7 @@ def init_db():
             target_drop_temp REAL,
             target_roast_time INTEGER,
             is_active INTEGER DEFAULT 1,
+            is_archived INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (green_coffee_id) REFERENCES green_coffee(id)
         )
@@ -235,6 +236,75 @@ def init_db():
         )
     """)
 
+    # B2B Customers
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS b2b_customers (
+            id INTEGER PRIMARY KEY,
+            company_name TEXT NOT NULL,
+            contact_name TEXT,
+            email TEXT,
+            phone TEXT,
+            vat_number TEXT,
+            address TEXT,
+            city TEXT,
+            postal_code TEXT,
+            country TEXT DEFAULT 'HU',
+            billingo_partner_id INTEGER,
+            default_discount_percent REAL DEFAULT 0,
+            payment_terms_days INTEGER DEFAULT 14,
+            notes TEXT,
+            is_active INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # B2B Customer product-specific discounts
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS b2b_customer_discounts (
+            id INTEGER PRIMARY KEY,
+            customer_id INTEGER NOT NULL,
+            product_id INTEGER NOT NULL,
+            discount_percent REAL NOT NULL,
+            FOREIGN KEY (customer_id) REFERENCES b2b_customers(id),
+            UNIQUE(customer_id, product_id)
+        )
+    """)
+
+    # B2B Orders
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS b2b_orders (
+            id INTEGER PRIMARY KEY,
+            customer_id INTEGER NOT NULL,
+            order_date DATE NOT NULL,
+            due_date DATE,
+            status TEXT DEFAULT 'pending',
+            payment_status TEXT DEFAULT 'unpaid',
+            subtotal REAL DEFAULT 0,
+            discount_total REAL DEFAULT 0,
+            total REAL DEFAULT 0,
+            billingo_document_id INTEGER,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (customer_id) REFERENCES b2b_customers(id)
+        )
+    """)
+
+    # B2B Order Items
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS b2b_order_items (
+            id INTEGER PRIMARY KEY,
+            order_id INTEGER NOT NULL,
+            product_name TEXT NOT NULL,
+            product_id INTEGER,
+            package_size_g INTEGER DEFAULT 250,
+            quantity INTEGER NOT NULL,
+            unit_price REAL NOT NULL,
+            discount_percent REAL DEFAULT 0,
+            line_total REAL NOT NULL,
+            FOREIGN KEY (order_id) REFERENCES b2b_orders(id)
+        )
+    """)
+
     # Create indexes
     cur.execute("CREATE INDEX IF NOT EXISTS idx_roast_batches_lot ON roast_batches(lot_number)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_roast_batches_date ON roast_batches(roast_date)")
@@ -244,6 +314,70 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_inventory_adjustments_date ON inventory_adjustments(created_at)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_order_lot_assignments_order ON order_lot_assignments(wc_order_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_order_lot_assignments_item ON order_lot_assignments(wc_order_item_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_b2b_customers_active ON b2b_customers(is_active)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_b2b_orders_customer ON b2b_orders(customer_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_b2b_orders_status ON b2b_orders(status)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_b2b_orders_payment ON b2b_orders(payment_status)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_b2b_order_items_order ON b2b_order_items(order_id)")
+
+    # Migration: Add production_batch_id column if it doesn't exist
+    # This migrates old schema that only had roast_batch_id to new schema with production_batch_id
+    cur.execute("PRAGMA table_info(order_lot_assignments)")
+    columns = [col[1] for col in cur.fetchall()]
+    if 'production_batch_id' not in columns:
+        print("Migrating order_lot_assignments: adding production_batch_id column...")
+        cur.execute("ALTER TABLE order_lot_assignments ADD COLUMN production_batch_id INTEGER")
+        # Make roast_batch_id nullable if it was NOT NULL before
+        # SQLite doesn't support modifying constraints, but the column already exists
+        print("Migration complete: production_batch_id column added")
+
+    # Migration: Add is_archived column to coffee_products if it doesn't exist
+    cur.execute("PRAGMA table_info(coffee_products)")
+    columns = [col[1] for col in cur.fetchall()]
+    if 'is_archived' not in columns:
+        print("Migrating coffee_products: adding is_archived column...")
+        cur.execute("ALTER TABLE coffee_products ADD COLUMN is_archived INTEGER DEFAULT 0")
+        print("Migration complete: is_archived column added")
+
+    # Note: wc_order_id is INTEGER but SQLite accepts TEXT values (B2B-xx format)
+    # This allows storing both WC numeric IDs and B2B string IDs in the same column
+
+    # B2B Order Item Invoices - tracks which items/quantities have been invoiced
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS b2b_item_invoices (
+            id INTEGER PRIMARY KEY,
+            order_id INTEGER NOT NULL,
+            order_item_id INTEGER NOT NULL,
+            billingo_document_id INTEGER NOT NULL,
+            quantity_invoiced INTEGER NOT NULL,
+            lot_numbers TEXT,  -- JSON array of LOT numbers invoiced
+            invoiced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (order_id) REFERENCES b2b_orders(id),
+            FOREIGN KEY (order_item_id) REFERENCES b2b_order_items(id)
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_b2b_item_invoices_order ON b2b_item_invoices(order_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_b2b_item_invoices_item ON b2b_item_invoices(order_item_id)")
+
+    # Migration: Add payment_status column to b2b_item_invoices if it doesn't exist
+    cur.execute("PRAGMA table_info(b2b_item_invoices)")
+    columns = [col[1] for col in cur.fetchall()]
+    if 'payment_status' not in columns:
+        print("Migrating b2b_item_invoices: adding payment_status column...")
+        cur.execute("ALTER TABLE b2b_item_invoices ADD COLUMN payment_status TEXT DEFAULT 'unpaid'")
+        print("Migration complete: payment_status column added")
+
+    # WooCommerce Order Invoices - tracks invoices for WC orders
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS wc_order_invoices (
+            id INTEGER PRIMARY KEY,
+            wc_order_id INTEGER NOT NULL UNIQUE,
+            billingo_document_id INTEGER NOT NULL,
+            billingo_partner_id INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_wc_order_invoices_order ON wc_order_invoices(wc_order_id)")
 
     conn.commit()
     conn.close()

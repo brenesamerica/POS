@@ -14,8 +14,32 @@
             --roast-dark: #794f2b;
         }
 
+        /* Environment indicator */
+        .env-indicator {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 4px 12px;
+            text-align: center;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            z-index: 1000;
+        }
+        .env-indicator.test {
+            background: var(--warning);
+            color: var(--gray-900);
+        }
+        .env-indicator.prod {
+            background: var(--danger);
+            color: white;
+        }
+
         body {
             background: #f8f5f2;
+            padding-top: 28px;
         }
 
         .tracker-nav {
@@ -440,6 +464,13 @@
         }
 
         @media (max-width: 768px) {
+            body {
+                padding-top: 24px;
+            }
+            .env-indicator {
+                font-size: 0.65rem;
+                padding: 3px 8px;
+            }
             .tracker-nav {
                 flex-wrap: wrap;
                 padding: 10px;
@@ -464,6 +495,15 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body>
+    <!-- Environment Indicator -->
+    <div class="env-indicator {{ 'test' if billingo_env == 'test' else 'prod' }}">
+        {% if billingo_env == 'test' %}
+            TESZT környezet
+        {% else %}
+            ÉLES RENDSZER
+        {% endif %}
+    </div>
+
     <nav class="tracker-nav">
         <div class="logo">
             <img src="{{ url_for('static', filename='images/fulllogo_transparent_nobuffer.png') }}" alt="Café Tiko">
@@ -471,6 +511,7 @@
         <div class="nav-links">
             <a href="{{ url_for('roast_tracker.dashboard') }}" class="nav-link {% if request.endpoint == 'roast_tracker.dashboard' %}active{% endif %}">Dashboard</a>
             <a href="{{ url_for('roast_tracker.orders') }}" class="nav-link {% if request.endpoint == 'roast_tracker.orders' %}active{% endif %}">Orders</a>
+            <a href="{{ url_for('roast_tracker.b2b_orders') }}" class="nav-link {% if 'b2b' in request.endpoint %}active{% endif %}">B2B</a>
             <a href="{{ url_for('roast_tracker.roast_plan') }}" class="nav-link {% if request.endpoint == 'roast_tracker.roast_plan' %}active{% endif %}">Plan</a>
             <a href="{{ url_for('roast_tracker.new_roast') }}" class="nav-link {% if request.endpoint == 'roast_tracker.new_roast' %}active{% endif %}">New Roast</a>
             <a href="{{ url_for('roast_tracker.production') }}" class="nav-link {% if request.endpoint == 'roast_tracker.production' %}active{% endif %}">Package Coffee</a>

@@ -172,6 +172,12 @@
         color: #ca8a04;
     }
 
+    .wc-status-badge.b2b {
+        background: rgba(139, 92, 246, 0.1);
+        color: #7c3aed;
+        font-weight: 600;
+    }
+
     .lot-selection {
         display: flex;
         gap: 8px;
@@ -231,13 +237,71 @@
         padding: 4px 8px;
         border-radius: 4px;
     }
+
+    /* Order item completed state */
+    .order-item-row.completed .item-name {
+        text-decoration: line-through;
+        color: var(--gray-400);
+    }
+
+    .order-item-row.completed::before {
+        content: '✓';
+        color: #16a34a;
+        font-weight: bold;
+        margin-right: 8px;
+    }
+
+    .order-item-row.completed {
+        flex-direction: row;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .order-item-row.completed .order-item-main {
+        flex: 1;
+    }
+
+    .order-item-row.completed .order-item-lots {
+        display: none;
+    }
+
+    .order-item-row.completed .assigned-lots-display {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-left: auto;
+        padding-left: 12px;
+    }
+
+    .assigned-lot-badge {
+        background: rgba(34, 197, 94, 0.1);
+        color: #16a34a;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+
+    /* Summary table completed rows */
+    .summary-row.completed td {
+        text-decoration: line-through;
+        color: var(--gray-400);
+    }
+
+    .summary-row.completed td:first-child::before {
+        content: '✓ ';
+        color: #16a34a;
+        font-weight: bold;
+        text-decoration: none;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="page-header">
-    <h1>WooCommerce Orders</h1>
+    <h1>Order Fulfillment</h1>
     <div>
+        <a href="{{ url_for('roast_tracker.b2b_orders') }}" class="btn btn-secondary">B2B Orders</a>
         <button class="btn btn-secondary" onclick="analyzeOrders()">Analyze & Plan</button>
         <a href="{{ url_for('roast_tracker.roast_plan') }}" class="btn btn-primary">View Roast Plan</a>
     </div>
@@ -277,7 +341,7 @@
                 </thead>
                 <tbody>
                     {% for item in order_summary %}
-                    <tr>
+                    <tr class="summary-row" data-product-name="{{ item.name|lower }}">
                         <td>{{ item.name }}</td>
                         <td style="text-align: right; font-weight: 600;">{{ item.display }}</td>
                         <td style="text-align: right; color: var(--gray-500);">{{ item.total_g }}g</td>
@@ -313,18 +377,21 @@
         </div>
 
         {% for order in orders %}
-        <div class="order-card" data-order-id="{{ order.id }}">
+        <div class="order-card" data-order-id="{{ order.id }}" data-is-b2b="{{ 'true' if order.is_b2b else 'false' }}">
             <div class="order-header">
                 <div>
-                    <div class="order-number">#{{ order.number }}</div>
+                    <div class="order-number">
+                        {% if order.is_b2b %}<span class="wc-status-badge b2b">B2B</span>{% endif %}
+                        #{{ order.number }}
+                    </div>
                     <div class="order-customer">
                         {{ order.billing.first_name }} {{ order.billing.last_name }}
                         {% if order.shipping.country %} ({{ order.shipping.country }}){% endif %}
                     </div>
-                    <div class="order-date">{{ order.date_created[:10] }}</div>
+                    <div class="order-date">{{ order.date_created[:10] if order.date_created else order.date_created }}</div>
                 </div>
                 <div style="text-align: right;">
-                    <div class="order-total">{{ order.total }} {{ order.currency }}</div>
+                    <div class="order-total">{{ '{:,.0f}'.format(order.total|float) if order.is_b2b else order.total }} {{ order.currency }}</div>
                     <span class="wc-status-badge {{ order.status }}">{{ order.status }}</span>
                     <span class="fulfillment-badge {{ order.fulfillment_status }}">
                         {% if order.fulfillment_status == 'ready' %}Ready to Ship{% else %}Incomplete{% endif %}
@@ -334,9 +401,11 @@
 
             <div class="order-items">
                 {% for item in order.line_items %}
-                {% set item_weight = 250 %}
-                {% if '500' in item.name %}{% set item_weight = 500 %}{% endif %}
-                {% set slots_needed = (item_weight / 250)|int * item.quantity %}
+                {% set item_weight = item.package_size_g if item.package_size_g else 250 %}
+                {% if '500' in item.name and not item.package_size_g %}{% set item_weight = 500 %}{% endif %}
+                {# For small packages (<250g like drip bags), each unit is 1 slot; for larger packages, calculate slots per 250g #}
+                {% set slots_per_unit = ((item_weight / 250)|int) if item_weight >= 250 else 1 %}
+                {% set slots_needed = slots_per_unit * item.quantity %}
                 <div class="order-item-row" data-order-id="{{ order.id }}" data-item-id="{{ item.id }}">
                     <div class="order-item-main">
                         <span class="item-name">{{ item.name }}</span>
@@ -359,8 +428,9 @@
                                     data-item-id="{{ item.id }}"
                                     data-slot="{{ slot }}"
                                     data-item-name="{{ item.name|lower }}"
+                                    data-package-size="{{ item_weight }}"
                                     onchange="assignLot(this)">
-                                <option value="">Select LOT...</option>
+                                <option value="">Select packed LOT...</option>
                             </select>
                         </div>
                         {% endfor %}
@@ -372,6 +442,52 @@
             {% if order.missing_items %}
             <div class="missing-alert">
                 Missing: {{ order.missing_items|join(', ') }}
+            </div>
+            {% endif %}
+
+            <!-- Invoice Section (WooCommerce orders only) -->
+            {% if not order.is_b2b %}
+            <div class="order-invoice" style="padding: 12px 16px; background: var(--gray-50); border-top: 1px solid var(--gray-200);">
+                <details>
+                    <summary style="cursor: pointer; font-size: 0.85rem; font-weight: 500; color: var(--gray-700);">
+                        📄 Invoice
+                        {% if wc_invoices and wc_invoices[order.id|string] %}
+                        <span style="color: #16a34a; margin-left: 8px;">✓ Created</span>
+                        {% endif %}
+                    </summary>
+                    <div style="margin-top: 12px;">
+                        <!-- Billing Info -->
+                        <div style="font-size: 0.8rem; color: var(--gray-600); margin-bottom: 12px; padding: 8px; background: white; border-radius: 4px;">
+                            <strong>{{ order.billing.first_name }} {{ order.billing.last_name }}</strong>
+                            {% if order.billing.company %}<br>{{ order.billing.company }}{% endif %}
+                            <br>{{ order.billing.address_1 }}{% if order.billing.address_2 %}, {{ order.billing.address_2 }}{% endif %}
+                            <br>{{ order.billing.postcode }} {{ order.billing.city }}, {{ order.billing.country }}
+                            <br>📧 {{ order.billing.email }}
+                            {% if order.billing.phone %}<br>📞 {{ order.billing.phone }}{% endif %}
+                        </div>
+
+                        {% if wc_invoices and wc_invoices[order.id|string] %}
+                        <!-- Invoice exists -->
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <span style="color: #16a34a; font-weight: 500;">Invoice #{{ wc_invoices[order.id|string].document_id }}</span>
+                            <a href="{{ url_for('roast_tracker.wc_download_invoice', order_id=order.id) }}" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;">Download PDF</a>
+                        </div>
+                        {% else %}
+                        <!-- Create Invoice Form -->
+                        <form method="POST" action="{{ url_for('roast_tracker.wc_generate_invoice', order_id=order.id) }}">
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <select name="payment_method" style="padding: 4px 8px; font-size: 0.8rem; border-radius: 4px;">
+                                    <option value="wire_transfer" {% if order.payment_method == 'bacs' %}selected{% endif %}>Átutalás</option>
+                                    <option value="bankcard" {% if order.payment_method in ['stripe', 'card'] %}selected{% endif %}>Bankkártya</option>
+                                    <option value="cash" {% if order.payment_method == 'cod' %}selected{% endif %}>Készpénz</option>
+                                    <option value="paypal" {% if order.payment_method == 'paypal' %}selected{% endif %}>PayPal</option>
+                                </select>
+                                <button type="submit" class="btn btn-primary" style="padding: 4px 12px; font-size: 0.8rem;">Create Invoice</button>
+                            </div>
+                        </form>
+                        {% endif %}
+                    </div>
+                </details>
             </div>
             {% endif %}
         </div>
@@ -430,9 +546,13 @@
         const selects = document.querySelectorAll('.lot-select');
         selects.forEach(select => {
             const itemName = (select.dataset.itemName || '').toLowerCase().trim();
+            const packageSize = parseInt(select.dataset.packageSize) || 250;
 
-            // Filter PACKED LOTs to only show those matching the order item
+            // Filter PACKED LOTs to only show those matching the order item AND package size
             const matchingLots = availablePackedLots.filter(lot => {
+                // First check package size matches
+                if (lot.package_size_g !== packageSize) return false;
+
                 // Normalize product name (trim spaces, lowercase)
                 const productName = (lot.product_name || '').toLowerCase().trim();
                 const country = (lot.country || '').toLowerCase().trim();
@@ -481,14 +601,104 @@
                         `.lot-select[data-order-id="${assignment.wc_order_id}"][data-item-id="${assignment.wc_order_item_id}"][data-slot="${assignment.slot_number}"]`
                     );
                     if (select) {
+                        // Check if the option exists in the dropdown
+                        const optionExists = Array.from(select.options).some(opt => opt.value == assignment.production_batch_id);
+                        if (!optionExists) {
+                            // Add the assigned LOT as an option (it may have 0 quantity now)
+                            const option = document.createElement('option');
+                            option.value = assignment.production_batch_id;
+                            option.textContent = `${assignment.source_lot} - ${assignment.product_name} (${assignment.package_size_g}g) [assigned]`;
+                            select.appendChild(option);
+                        }
                         select.value = assignment.production_batch_id;
                         select.classList.add('assigned');
                     }
                 });
+                // Check for completed items after loading assignments
+                checkCompletedItems();
             }
         } catch (error) {
             console.error('Error loading order assignments:', error);
         }
+    }
+
+    function checkCompletedItems() {
+        // Check each order item row to see if all LOT slots are assigned
+        document.querySelectorAll('.order-item-row').forEach(row => {
+            const selects = row.querySelectorAll('.lot-select');
+            const allAssigned = Array.from(selects).every(s => s.value && s.value !== '');
+
+            // Remove any existing assigned-lots-display
+            const existingDisplay = row.querySelector('.assigned-lots-display');
+            if (existingDisplay) {
+                existingDisplay.remove();
+            }
+
+            if (allAssigned && selects.length > 0) {
+                row.classList.add('completed');
+
+                // Create a display showing the assigned LOT numbers
+                const lotsDisplay = document.createElement('div');
+                lotsDisplay.className = 'assigned-lots-display';
+
+                selects.forEach(select => {
+                    const selectedOption = select.options[select.selectedIndex];
+                    if (selectedOption && selectedOption.value) {
+                        // Extract just the LOT number from the option text (before the first ' - ')
+                        const lotText = selectedOption.textContent.split(' - ')[0].trim();
+                        const badge = document.createElement('span');
+                        badge.className = 'assigned-lot-badge';
+                        badge.textContent = lotText;
+                        lotsDisplay.appendChild(badge);
+                    }
+                });
+
+                row.appendChild(lotsDisplay);
+            } else {
+                row.classList.remove('completed');
+            }
+        });
+
+        // Update summary table based on completed items
+        updateSummaryCompletion();
+    }
+
+    function updateSummaryCompletion() {
+        // For each product in the summary, check if ALL order items for that product are complete
+        document.querySelectorAll('.summary-row').forEach(summaryRow => {
+            const productName = (summaryRow.dataset.productName || '').toLowerCase().trim();
+
+            // Find all order item rows that match this product
+            const matchingItems = document.querySelectorAll('.order-item-row');
+            let allComplete = true;
+            let hasMatchingItems = false;
+
+            matchingItems.forEach(itemRow => {
+                const itemName = (itemRow.querySelector('.item-name')?.textContent || '').toLowerCase().trim();
+
+                // Check if this item matches the summary product (either contains the other)
+                // Normalize by removing extra spaces
+                const normalizedProductName = productName.replace(/\s+/g, ' ');
+                const normalizedItemName = itemName.replace(/\s+/g, ' ');
+
+                const matches = normalizedItemName.includes(normalizedProductName) ||
+                               normalizedProductName.includes(normalizedItemName) ||
+                               normalizedItemName === normalizedProductName;
+
+                if (matches) {
+                    hasMatchingItems = true;
+                    if (!itemRow.classList.contains('completed')) {
+                        allComplete = false;
+                    }
+                }
+            });
+
+            if (hasMatchingItems && allComplete) {
+                summaryRow.classList.add('completed');
+            } else {
+                summaryRow.classList.remove('completed');
+            }
+        });
     }
 
     async function assignLot(selectElement) {
@@ -497,6 +707,11 @@
         const slot = selectElement.dataset.slot;
         const productionBatchId = selectElement.value;
 
+        // Check if this is a B2B order (string ID like "B2B-1") or WC order (numeric)
+        const isB2B = orderId.startsWith('B2B-');
+        const parsedOrderId = isB2B ? orderId : parseInt(orderId);
+        const parsedItemId = parseInt(itemId);
+
         if (!productionBatchId) {
             // Remove assignment
             try {
@@ -504,8 +719,8 @@
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
-                        order_id: parseInt(orderId),
-                        order_item_id: parseInt(itemId),
+                        order_id: parsedOrderId,
+                        order_item_id: parsedItemId,
                         slot_number: parseInt(slot)
                     })
                 });
@@ -528,8 +743,8 @@
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
-                    order_id: parseInt(orderId),
-                    order_item_id: parseInt(itemId),
+                    order_id: parsedOrderId,
+                    order_item_id: parsedItemId,
                     slot_number: parseInt(slot),
                     production_batch_id: parseInt(productionBatchId)
                 })
@@ -660,7 +875,7 @@
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     product_id: productId,
-                    planned_weight_g: parseInt(weight),
+                    planned_weight_g: 888,
                     source: 'order_analysis'
                 })
             });
@@ -700,7 +915,7 @@
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
                         product_id: s.product_id,
-                        planned_weight_g: parseInt(weight),
+                        planned_weight_g: 888,
                         source: 'order_analysis'
                     })
                 });

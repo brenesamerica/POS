@@ -1,0 +1,192 @@
+{% extends "roast_tracker/base.html" %}
+
+{% block title %}{{ 'Edit' if customer else 'New' }} B2B Customer{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ customer.company_name if customer else 'New B2B Customer' }}</h1>
+    <a href="{{ url_for('roast_tracker.b2b_customers') }}" class="btn btn-secondary">← Back to Customers</a>
+</div>
+
+<div class="page-content">
+    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px;">
+        <!-- Main Form -->
+        <div>
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Company Details</h2>
+                </div>
+                <form method="POST" style="padding: 20px;">
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 2;">
+                            <label>Company Name *</label>
+                            <input type="text" name="company_name" value="{{ customer.company_name if customer else '' }}" required>
+                        </div>
+                        <div class="form-group">
+                            <label>VAT Number (Adószám)</label>
+                            <input type="text" name="vat_number" value="{{ customer.vat_number if customer else '' }}" placeholder="12345678-1-23">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Contact Name</label>
+                            <input type="text" name="contact_name" value="{{ customer.contact_name if customer else '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>Email</label>
+                            <input type="email" name="email" value="{{ customer.email if customer else '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>Phone</label>
+                            <input type="tel" name="phone" value="{{ customer.phone if customer else '' }}">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 2;">
+                            <label>Address</label>
+                            <input type="text" name="address" value="{{ customer.address if customer else '' }}">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>City</label>
+                            <input type="text" name="city" value="{{ customer.city if customer else '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>Postal Code</label>
+                            <input type="text" name="postal_code" value="{{ customer.postal_code if customer else '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>Country</label>
+                            <input type="text" name="country" value="{{ customer.country if customer else 'HU' }}">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Default Discount (%)</label>
+                            <input type="number" name="default_discount_percent" value="{{ customer.default_discount_percent if customer else 0 }}" min="0" max="100" step="0.5">
+                        </div>
+                        <div class="form-group">
+                            <label>Payment Terms (days)</label>
+                            <input type="number" name="payment_terms_days" value="{{ customer.payment_terms_days if customer else 14 }}" min="0" max="90">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Notes</label>
+                        <textarea name="notes" rows="3">{{ customer.notes if customer else '' }}</textarea>
+                    </div>
+
+                    <div style="margin-top: 20px;">
+                        <button type="submit" class="btn btn-primary">{{ 'Update Customer' if customer else 'Create Customer' }}</button>
+                    </div>
+                </form>
+            </div>
+
+            {% if customer and discounts is defined %}
+            <!-- Product-Specific Discounts -->
+            <div class="card" style="margin-top: 24px;">
+                <div class="card-header">
+                    <h2 class="card-title">Product-Specific Discounts</h2>
+                </div>
+                <div style="padding: 20px;">
+                    {% if discounts %}
+                    <table style="width: 100%; margin-bottom: 20px;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid var(--gray-200);">
+                                <th style="text-align: left; padding: 8px;">Product</th>
+                                <th style="text-align: center; padding: 8px;">Discount</th>
+                                <th style="text-align: right; padding: 8px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for discount in discounts %}
+                            <tr style="border-bottom: 1px solid var(--gray-100);">
+                                <td style="padding: 8px;">{{ discount.product_name or 'Product #' ~ discount.product_id }}</td>
+                                <td style="padding: 8px; text-align: center;">
+                                    <span style="background: rgba(34, 197, 94, 0.1); color: #16a34a; padding: 2px 8px; border-radius: 4px;">
+                                        {{ discount.discount_percent }}%
+                                    </span>
+                                </td>
+                                <td style="padding: 8px; text-align: right;">
+                                    <form method="POST" action="{{ url_for('roast_tracker.b2b_customer_discount_delete', customer_id=customer.id, discount_id=discount.id) }}" style="display: inline;">
+                                        <button type="submit" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.8rem;">Remove</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% endif %}
+
+                    <form method="POST" action="{{ url_for('roast_tracker.b2b_customer_discounts', customer_id=customer.id) }}" class="form-row">
+                        <div class="form-group" style="flex: 2;">
+                            <select name="product_id" required>
+                                <option value="">Select product...</option>
+                                {% for product in products %}
+                                <option value="{{ product.id }}">{{ product.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <input type="number" name="discount_percent" placeholder="Discount %" min="0" max="100" step="0.5" required>
+                        </div>
+                        <button type="submit" class="btn btn-secondary">Add Discount</button>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Sidebar -->
+        <div>
+            {% if customer and orders is defined %}
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Recent Orders</h2>
+                </div>
+                <div style="padding: 16px;">
+                    {% if orders %}
+                    {% for order in orders %}
+                    <a href="{{ url_for('roast_tracker.b2b_order_detail', order_id=order.id) }}" style="text-decoration: none; color: inherit;">
+                        <div style="padding: 12px; border-bottom: 1px solid var(--gray-100); cursor: pointer;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-weight: 500;">#{{ order.id }}</span>
+                                <span style="font-size: 0.85rem; color: var(--gray-500);">{{ order.order_date }}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                                <span class="status-badge {{ order.status }}">{{ order.status }}</span>
+                                <span style="font-weight: 600;">{{ '{:,.0f}'.format(order.total) }} HUF</span>
+                            </div>
+                        </div>
+                    </a>
+                    {% endfor %}
+                    {% else %}
+                    <p style="color: var(--gray-500); text-align: center; padding: 20px;">No orders yet</p>
+                    {% endif %}
+                    <a href="{{ url_for('roast_tracker.b2b_order_new') }}?customer_id={{ customer.id }}" class="btn btn-primary" style="width: 100%; margin-top: 12px;">+ New Order</a>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+    .status-badge {
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+    .status-badge.pending { background: rgba(234, 179, 8, 0.1); color: #ca8a04; }
+    .status-badge.processing { background: rgba(59, 130, 246, 0.1); color: #2563eb; }
+    .status-badge.ready { background: rgba(34, 197, 94, 0.1); color: #16a34a; }
+    .status-badge.shipped { background: rgba(139, 92, 246, 0.1); color: #7c3aed; }
+    .status-badge.completed { background: rgba(34, 197, 94, 0.2); color: #15803d; }
+</style>
+{% endblock %}

@@ -20,8 +20,12 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# Databases (environment-specific data)
+# Databases (ignore all except the ones we want to backup)
 *.db
+!pos_prod.db
+!pos_test.db
+!roast_tracker_prod.db
+!roast_tracker_test.db
 
 # Visual Studio
 .vs/

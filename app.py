@@ -10,9 +10,24 @@ import hashlib
 import secrets
 from functools import wraps
 from datetime import datetime, timedelta
+from prometheus_flask_exporter import PrometheusMetrics
 
 
 app = Flask(__name__)
+
+# Prometheus metrics
+metrics = PrometheusMetrics(app, group_by='endpoint')
+
+# Custom metrics for business logic
+from prometheus_client import Counter, Gauge, Histogram
+
+# Business metrics
+receipts_created = Counter('pos_receipts_created_total', 'Total receipts created', ['env', 'payment_method'])
+invoices_created = Counter('pos_invoices_created_total', 'Total invoices created', ['env', 'type'])
+market_sales = Counter('pos_market_sales_total', 'Total market sales', ['env'])
+api_errors = Counter('pos_api_errors_total', 'API errors', ['env', 'api', 'error_type'])
+active_market_sessions = Gauge('pos_active_market_sessions', 'Number of active market sessions')
+orders_pending = Gauge('pos_orders_pending', 'Number of pending orders', ['type'])
 
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-key-change-in-production")
 
@@ -107,6 +122,7 @@ def init_db():
                 description TEXT,
                 attributes TEXT,
                 source TEXT DEFAULT 'manual',
+                archived INTEGER DEFAULT 0,
                 FOREIGN KEY (category_id) REFERENCES categories (id)
             )
         """)
@@ -121,6 +137,8 @@ def init_db():
         item_columns = [col[1] for col in cur.fetchall()]
         if 'source' not in item_columns:
             cur.execute("ALTER TABLE items ADD COLUMN source TEXT DEFAULT 'manual'")
+        if 'archived' not in item_columns:
+            cur.execute("ALTER TABLE items ADD COLUMN archived INTEGER DEFAULT 0")
         # Create market sessions table
         cur.execute("""
             CREATE TABLE IF NOT EXISTS market_sessions (
@@ -300,6 +318,7 @@ def fetch_wc_orders(status='processing', per_page=100):
             break
 
         for order in data:
+            billing = order.get('billing', {})
             order_data = {
                 'id': order.get('id'),
                 'number': order.get('number'),
@@ -307,11 +326,19 @@ def fetch_wc_orders(status='processing', per_page=100):
                 'date_created': order.get('date_created'),
                 'total': order.get('total'),
                 'currency': order.get('currency'),
+                'payment_method': order.get('payment_method', ''),
+                'payment_method_title': order.get('payment_method_title', ''),
                 'billing': {
-                    'first_name': order.get('billing', {}).get('first_name', ''),
-                    'last_name': order.get('billing', {}).get('last_name', ''),
-                    'email': order.get('billing', {}).get('email', ''),
-                    'country': order.get('billing', {}).get('country', '')
+                    'first_name': billing.get('first_name', ''),
+                    'last_name': billing.get('last_name', ''),
+                    'company': billing.get('company', ''),
+                    'address_1': billing.get('address_1', ''),
+                    'address_2': billing.get('address_2', ''),
+                    'city': billing.get('city', ''),
+                    'postcode': billing.get('postcode', ''),
+                    'country': billing.get('country', ''),
+                    'email': billing.get('email', ''),
+                    'phone': billing.get('phone', '')
                 },
                 'shipping': {
                     'first_name': order.get('shipping', {}).get('first_name', ''),
@@ -831,6 +858,22 @@ def verify_data():
 # Initialize the database
 init_db()
 
+# Update gauge metrics on each request
+@app.before_request
+def update_gauge_metrics():
+    """Update gauge metrics for dashboards"""
+    try:
+        # Active market sessions
+        active_sessions = query_db("SELECT COUNT(*) as count FROM market_sessions WHERE closed_at IS NULL", one=True)
+        active_market_sessions.set(active_sessions['count'] if active_sessions else 0)
+
+        # Pending WC orders (fetched separately, so we just count from recent activity)
+        # B2B pending orders
+        b2b_pending = query_db("SELECT COUNT(*) as count FROM b2b_orders WHERE status = 'pending'", one=True)
+        orders_pending.labels(type='b2b').set(b2b_pending['count'] if b2b_pending else 0)
+    except:
+        pass  # Don't fail requests if metrics update fails
+
 # Inject billingo_env and user info into all templates automatically
 @app.context_processor
 def inject_globals():
@@ -1029,11 +1072,22 @@ def delete_category(id):
 @app.route('/manage_items')
 @login_required
 def manage_items():
-    items = query_db("""
-        SELECT items.id, items.name, items.price, items.vat, categories.name AS category_name, items.attributes
-        FROM items
-        LEFT JOIN categories ON items.category_id = categories.id
-    """)
+    show_archived = request.args.get('archived', '0') == '1'
+
+    if show_archived:
+        items = query_db("""
+            SELECT items.id, items.name, items.price, items.vat, categories.name AS category_name, items.attributes, items.archived
+            FROM items
+            LEFT JOIN categories ON items.category_id = categories.id
+            WHERE items.archived = 1
+        """)
+    else:
+        items = query_db("""
+            SELECT items.id, items.name, items.price, items.vat, categories.name AS category_name, items.attributes, items.archived
+            FROM items
+            LEFT JOIN categories ON items.category_id = categories.id
+            WHERE COALESCE(items.archived, 0) = 0
+        """)
     categories = query_db("SELECT * FROM categories ORDER BY name")
 
     # Extract unique origins and roasts from attributes
@@ -1054,7 +1108,8 @@ def manage_items():
                           items=items,
                           categories=categories,
                           origins=sorted(origins),
-                          roasts=sorted(roasts))
+                          roasts=sorted(roasts),
+                          show_archived=show_archived)
 
 
 @app.route('/add_item', methods=['GET', 'POST'])
@@ -1089,6 +1144,20 @@ def edit_item(id):
 def delete_item(id):
     query_db("DELETE FROM items WHERE id = ?", [id])
     return jsonify({"status": "success", "message": "Item deleted successfully"})
+
+@app.route('/archive_item/<int:id>', methods=['POST'])
+@login_required
+def archive_item(id):
+    """Archive an item (hide from inventory and low stock alerts)"""
+    query_db("UPDATE items SET archived = 1 WHERE id = ?", [id])
+    return jsonify({"status": "success", "message": "Item archived successfully"})
+
+@app.route('/unarchive_item/<int:id>', methods=['POST'])
+@login_required
+def unarchive_item(id):
+    """Unarchive an item (restore to active inventory)"""
+    query_db("UPDATE items SET archived = 0 WHERE id = ?", [id])
+    return jsonify({"status": "success", "message": "Item restored successfully"})
 
 @app.route('/create_receipt')
 @login_required
@@ -1191,12 +1260,15 @@ def create_receipt():
 
         if response.status_code == 201:
             last_receipt_data = response.json()
+            receipts_created.labels(env=BILLINGO_ENV, payment_method=payment_method).inc()
             return jsonify({"status": "success", "data": last_receipt_data}), 201
         else:
+            api_errors.labels(env=BILLINGO_ENV, api='billingo', error_type='receipt_creation').inc()
             return jsonify({"status": "error", "message": response.json()}), response.status_code
 
     except Exception as e:
         logging.error(f"Error creating receipt: {e}")
+        api_errors.labels(env=BILLINGO_ENV, api='billingo', error_type='receipt_exception').inc()
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/download_pos_print', methods=['GET'])
@@ -1341,7 +1413,7 @@ def get_packaged_products():
 @login_required
 def prepare_market():
     active_session = get_active_market_session()
-    items = query_db("SELECT * FROM items")
+    items = query_db("SELECT * FROM items WHERE COALESCE(archived, 0) = 0")
     categories = query_db("SELECT * FROM categories")
 
     # Get packaged products from roast tracker
@@ -1687,12 +1759,12 @@ def market_mode():
             except:
                 pass
 
-    # Get coffee shop items (from categories marked as coffee shop)
+    # Get coffee shop items (from categories marked as coffee shop, excluding archived)
     coffee_items = query_db("""
         SELECT i.id, i.name, i.price, i.vat, i.image_url, c.name as category_name
         FROM items i
         JOIN categories c ON i.category_id = c.id
-        WHERE c.is_coffee_shop = 1
+        WHERE c.is_coffee_shop = 1 AND COALESCE(i.archived, 0) = 0
         ORDER BY c.name, i.name
     """)
 
@@ -1704,7 +1776,7 @@ def market_mode():
     products_500g = query_db("""
         SELECT id, name, price, vat, image_url, attributes
         FROM items
-        WHERE name LIKE '%500g%'
+        WHERE name LIKE '%500g%' AND COALESCE(archived, 0) = 0
     """)
 
     return render_template('market_mode.html',
@@ -1736,6 +1808,7 @@ def market_sale():
                 WHERE id = ? AND quantity_remaining >= ?
             """, (quantity, item_id, quantity))
 
+        market_sales.labels(env=BILLINGO_ENV).inc()
         return jsonify({"status": "success"})
     except Exception as e:
         logging.error(f"Error processing market sale: {e}")

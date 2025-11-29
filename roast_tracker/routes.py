@@ -1,8 +1,9 @@
 """
 Flask routes for Roast Tracker
 """
+import os
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from functools import wraps
 from .database import get_db, query_db, init_db
 from .lot_generator import (
@@ -46,6 +47,7 @@ def dashboard():
 
     # Get low stock alerts by PRODUCT (less than 300g total, including 0g)
     # Includes BOTH unpacked roasted coffee AND packed products still in inventory
+    # Excludes archived products
     LOW_STOCK_THRESHOLD = 300
     low_stock_products = query_db("""
         SELECT cp.id, cp.name as product_name, cp.roast_level,
@@ -73,7 +75,7 @@ def dashboard():
         FROM coffee_products cp
         LEFT JOIN green_coffee gc ON cp.green_coffee_id = gc.id
         LEFT JOIN roast_batches rb ON cp.id = rb.product_id
-        WHERE cp.is_active = 1
+        WHERE cp.is_active = 1 AND COALESCE(cp.is_archived, 0) = 0
         GROUP BY cp.id
         HAVING total_available_g < ?
         ORDER BY total_available_g ASC
@@ -91,6 +93,7 @@ def dashboard():
     """)
 
     # Get packed products (ready to ship) grouped by product
+    # Sorted by origin (country), then roast level (V=light, K=medium, S=dark)
     packed_products = query_db("""
         SELECT
             cp.id as product_id,
@@ -108,7 +111,14 @@ def dashboard():
         WHERE pb.quantity > 0
           AND pb.production_type IN ('whole_bean_250', 'whole_bean_70', 'whole_bean_16', 'drip_11')
         GROUP BY cp.id, pb.package_size_g
-        ORDER BY cp.name, pb.package_size_g DESC
+        ORDER BY gc.country,
+                 CASE cp.roast_level
+                     WHEN 'V' THEN 1
+                     WHEN 'K' THEN 2
+                     WHEN 'S' THEN 3
+                     ELSE 4
+                 END,
+                 pb.package_size_g DESC
     """)
 
     # Calculate total packed weight
@@ -215,7 +225,7 @@ def new_roast():
         SELECT cp.*, gc.country, gc.name as green_name
         FROM coffee_products cp
         LEFT JOIN green_coffee gc ON cp.green_coffee_id = gc.id
-        WHERE cp.is_active = 1
+        WHERE cp.is_active = 1 AND COALESCE(cp.is_archived, 0) = 0
         ORDER BY gc.country, cp.name
     """)
 
@@ -224,7 +234,7 @@ def new_roast():
         SELECT DISTINCT gc.country
         FROM coffee_products cp
         LEFT JOIN green_coffee gc ON cp.green_coffee_id = gc.id
-        WHERE cp.is_active = 1 AND gc.country IS NOT NULL
+        WHERE cp.is_active = 1 AND COALESCE(cp.is_archived, 0) = 0 AND gc.country IS NOT NULL
         ORDER BY gc.country
     """)
     country_list = [c['country'] for c in countries if c['country']]
@@ -327,14 +337,21 @@ def production():
         return redirect(url_for('roast_tracker.dashboard'))
 
     # GET: Show production form
-    # Get batches with available stock
+    # Get batches with available stock, sorted by country then roast level (V=light, K=medium, S=dark)
     batches = query_db("""
-        SELECT rb.*, cp.name as product_name, gc.country
+        SELECT rb.*, cp.name as product_name, cp.roast_level, gc.country
         FROM roast_batches rb
         JOIN coffee_products cp ON rb.product_id = cp.id
         LEFT JOIN green_coffee gc ON cp.green_coffee_id = gc.id
         WHERE rb.available_weight_g > 0
-        ORDER BY rb.roast_date DESC
+        ORDER BY gc.country,
+                 CASE cp.roast_level
+                     WHEN 'V' THEN 1
+                     WHEN 'K' THEN 2
+                     WHEN 'S' THEN 3
+                     ELSE 4
+                 END,
+                 rb.roast_date DESC
     """)
 
     return render_template('roast_tracker/production.html',
@@ -483,6 +500,7 @@ def inventory():
     """)
 
     # All coffee products (offerings) with inventory summary
+    # Exclude archived products from inventory view
     products = query_db("""
         SELECT cp.*, gc.country, gc.name as green_name,
                COALESCE(SUM(rb.available_weight_g), 0) as total_available_g,
@@ -490,7 +508,7 @@ def inventory():
         FROM coffee_products cp
         LEFT JOIN green_coffee gc ON cp.green_coffee_id = gc.id
         LEFT JOIN roast_batches rb ON cp.id = rb.product_id AND rb.available_weight_g > 0
-        WHERE cp.is_active = 1
+        WHERE cp.is_active = 1 AND COALESCE(cp.is_archived, 0) = 0
         GROUP BY cp.id
         ORDER BY gc.country, cp.name
     """)
@@ -665,18 +683,32 @@ def api_generate_lot():
 @tracker_login_required
 def setup_products():
     """Setup: Manage coffee products"""
+    show_archived = request.args.get('archived', '0') == '1'
+
     green_coffees = query_db("SELECT * FROM green_coffee ORDER BY country, name")
-    products = query_db("""
-        SELECT cp.*, gc.country, gc.name as green_coffee_name
-        FROM coffee_products cp
-        LEFT JOIN green_coffee gc ON cp.green_coffee_id = gc.id
-        ORDER BY gc.country, cp.name
-    """)
+
+    if show_archived:
+        products = query_db("""
+            SELECT cp.*, gc.country, gc.name as green_coffee_name
+            FROM coffee_products cp
+            LEFT JOIN green_coffee gc ON cp.green_coffee_id = gc.id
+            WHERE cp.is_archived = 1
+            ORDER BY gc.country, cp.name
+        """)
+    else:
+        products = query_db("""
+            SELECT cp.*, gc.country, gc.name as green_coffee_name
+            FROM coffee_products cp
+            LEFT JOIN green_coffee gc ON cp.green_coffee_id = gc.id
+            WHERE COALESCE(cp.is_archived, 0) = 0
+            ORDER BY gc.country, cp.name
+        """)
 
     return render_template('roast_tracker/setup_products.html',
                            green_coffees=green_coffees,
                            products=products,
-                           roast_levels=ROAST_LEVELS)
+                           roast_levels=ROAST_LEVELS,
+                           show_archived=show_archived)
 
 
 @roast_tracker.route('/setup/green-coffee', methods=['POST'])
@@ -758,6 +790,22 @@ def api_get_product(product_id):
     return jsonify({'error': 'Not found'}), 404
 
 
+@roast_tracker.route('/api/product/<int:product_id>/archive', methods=['POST'])
+@tracker_login_required
+def archive_product(product_id):
+    """Archive a coffee product"""
+    query_db("UPDATE coffee_products SET is_archived = 1 WHERE id = ?", (product_id,))
+    return jsonify({'status': 'success', 'message': 'Product archived'})
+
+
+@roast_tracker.route('/api/product/<int:product_id>/unarchive', methods=['POST'])
+@tracker_login_required
+def unarchive_product(product_id):
+    """Restore an archived coffee product"""
+    query_db("UPDATE coffee_products SET is_archived = 0 WHERE id = ?", (product_id,))
+    return jsonify({'status': 'success', 'message': 'Product restored'})
+
+
 # ===== Orders & Fulfillment =====
 
 @roast_tracker.route('/orders')
@@ -770,6 +818,55 @@ def orders():
 
     # Fetch processing orders from WooCommerce
     wc_orders = fetch_wc_orders(status='processing')
+
+    # Fetch B2B orders that are pending/processing (not completed/cancelled)
+    b2b_orders_raw = query_db("""
+        SELECT o.*, c.company_name
+        FROM b2b_orders o
+        JOIN b2b_customers c ON o.customer_id = c.id
+        WHERE o.status IN ('pending', 'processing', 'ready')
+        ORDER BY o.order_date DESC
+    """)
+
+    # Convert B2B orders to a format similar to WooCommerce orders
+    b2b_orders = []
+    for order in b2b_orders_raw:
+        # Get order items
+        items = query_db("""
+            SELECT * FROM b2b_order_items WHERE order_id = ? ORDER BY id
+        """, (order['id'],))
+
+        line_items = []
+        for item in items:
+            line_items.append({
+                'id': item['id'],
+                'name': item['product_name'],
+                'quantity': item['quantity'],
+                'product_id': item['product_id'],
+                'package_size_g': item['package_size_g'],
+                'fulfillment': 'unknown'
+            })
+
+        b2b_orders.append({
+            'id': f"B2B-{order['id']}",  # Prefix to distinguish from WC orders
+            'number': f"B2B-{order['id']}",
+            'is_b2b': True,
+            'b2b_id': order['id'],
+            'status': order['status'],
+            'date_created': order['order_date'],
+            'total': order['total'],
+            'currency': 'HUF',
+            'billing': {
+                'first_name': order['company_name'],
+                'last_name': ''
+            },
+            'shipping': {
+                'country': 'HU'
+            },
+            'line_items': line_items,
+            'fulfillment_status': 'ready',
+            'missing_items': []
+        })
 
     # Get available packaged products
     packaged = query_db("""
@@ -797,14 +894,56 @@ def orders():
         ORDER BY cp.name, rb.roast_date DESC
     """)
 
+    # Get all LOT assignments to check which order items are already fulfilled
+    lot_assignments = query_db("""
+        SELECT wc_order_id, wc_order_item_id, COUNT(*) as assigned_slots
+        FROM order_lot_assignments
+        GROUP BY wc_order_id, wc_order_item_id
+    """)
+    # Build a dict: (order_id, item_id) -> assigned_slots
+    # Note: wc_order_id can be numeric (WC orders) or string "B2B-x" (B2B orders)
+    assignments_by_item = {}
+    for a in lot_assignments:
+        # Store with both possible key types for numeric IDs (int and str)
+        order_id = a['wc_order_id']
+        item_id = a['wc_order_item_id']
+        assignments_by_item[(order_id, item_id)] = a['assigned_slots']
+        # Also store string version of numeric IDs for consistent lookup
+        if isinstance(order_id, int):
+            assignments_by_item[(str(order_id), item_id)] = a['assigned_slots']
+
+    # Combine WC orders and B2B orders
+    all_orders = wc_orders + b2b_orders
+
     # Analyze fulfillment for each order
-    for order in wc_orders:
+    for order in all_orders:
         order['fulfillment_status'] = 'ready'  # Default
         order['missing_items'] = []
+        is_b2b = order.get('is_b2b', False)
 
         for item in order['line_items']:
             item_name = item['name'].lower()
             item_qty = item['quantity']
+
+            # Calculate how many LOT slots are needed for this item
+            # For B2B, use package_size_g; for WC, check the name
+            if is_b2b:
+                package_size = item.get('package_size_g', 250)
+                slots_needed = (package_size // 250) * item_qty
+            elif '500' in item['name']:
+                slots_needed = 2 * item_qty
+            else:
+                slots_needed = item_qty
+
+            # Use order['id'] directly - for B2B it's already "B2B-x", for WC it's numeric
+            lookup_key = (order['id'], item['id'])
+
+            # Check if LOT assignments already exist for this item
+            assigned_slots = assignments_by_item.get(lookup_key, 0)
+            if assigned_slots >= slots_needed:
+                # Already fully assigned with LOT numbers
+                item['fulfillment'] = 'packaged'
+                continue
 
             # Check if we have packaged product
             found_package = False
@@ -836,13 +975,17 @@ def orders():
 
     # Calculate order summary - aggregate quantities per product (with 500g=2x250g logic)
     order_summary = {}
-    for order in wc_orders:
+    for order in all_orders:
+        is_b2b = order.get('is_b2b', False)
         for item in order['line_items']:
             item_name = item['name']
             item_qty = item['quantity']
 
-            # Determine unit size from item name
-            if '500' in item_name:
+            # Determine unit size from item - B2B has package_size_g, WC uses name
+            if is_b2b:
+                package_size = item.get('package_size_g', 250)
+                unit_250g = (package_size // 250) * item_qty
+            elif '500' in item_name:
                 # 500g = 2x250g
                 unit_250g = 2 * item_qty
             else:
@@ -865,11 +1008,16 @@ def orders():
                 'total_g': qty_250g * 250
             })
 
+    # Get WC invoices for all orders
+    wc_invoices_list = query_db("SELECT wc_order_id, billingo_document_id as document_id FROM wc_order_invoices")
+    wc_invoices = {str(inv['wc_order_id']): inv for inv in wc_invoices_list}
+
     return render_template('roast_tracker/orders.html',
-                           orders=wc_orders,
+                           orders=all_orders,
                            packaged=packaged,
                            roasted=roasted,
-                           order_summary=order_summary_formatted)
+                           order_summary=order_summary_formatted,
+                           wc_invoices=wc_invoices)
 
 
 @roast_tracker.route('/advent-config', methods=['GET', 'POST'])
@@ -952,6 +1100,8 @@ def advent_config():
         total_available = roasted['total'] if roasted and roasted['total'] else 0
         # Use string keys for JSON compatibility
         inventory_status[str(cfg['product_id'])] = {
+            'product_name': cfg['product_name'],
+            'country': cfg['country'],
             'available_g': int(total_available),
             'enough_for_advent': total_available >= 48
         }
@@ -960,7 +1110,8 @@ def advent_config():
                            light_products=light_products,
                            medium_products=medium_products,
                            config_by_slot=config_by_slot,
-                           inventory_status=inventory_status)
+                           inventory_status=inventory_status,
+                           today=date.today().isoformat())
 
 
 @roast_tracker.route('/roast-plan', methods=['GET', 'POST'])
@@ -983,6 +1134,11 @@ def roast_plan():
             """, (product_id, planned_weight, planned_date, notes, source))
             flash('Added to roast plan', 'success')
 
+            # Redirect back to referrer if specified
+            redirect_to = request.form.get('redirect_to')
+            if redirect_to:
+                return redirect(redirect_to)
+
         elif action == 'complete':
             plan_id = request.form.get('plan_id', type=int)
             query_db("UPDATE roast_plans SET status = 'completed' WHERE id = ?", (plan_id,))
@@ -1002,7 +1158,7 @@ def roast_plan():
 
     # GET: Show roast plan
     plans = query_db("""
-        SELECT rp.*, cp.name as product_name, gc.country
+        SELECT rp.*, cp.name as product_name, cp.roast_level, gc.country
         FROM roast_plans rp
         JOIN coffee_products cp ON rp.product_id = cp.id
         LEFT JOIN green_coffee gc ON cp.green_coffee_id = gc.id
@@ -1645,10 +1801,10 @@ def api_all_inventory_history():
     })
 
 
-@roast_tracker.route('/api/order-lot-assignments/<int:order_id>')
+@roast_tracker.route('/api/order-lot-assignments/<order_id>')
 @tracker_login_required
 def api_get_order_lot_assignments(order_id):
-    """Get LOT assignments for an order"""
+    """Get LOT assignments for an order (supports WC numeric IDs and B2B-xx IDs)"""
     assignments = query_db("""
         SELECT ola.*, pb.production_lot, pb.production_type, pb.package_size_g,
                rb.lot_number as source_lot, cp.name as product_name
@@ -1658,7 +1814,7 @@ def api_get_order_lot_assignments(order_id):
         LEFT JOIN coffee_products cp ON rb.product_id = cp.id
         WHERE ola.wc_order_id = ?
         ORDER BY ola.wc_order_item_id, ola.slot_number
-    """, (order_id,))
+    """, (str(order_id),))
 
     return jsonify({
         'status': 'success',
@@ -1865,6 +2021,1232 @@ def api_available_packed_lots():
     return jsonify({
         'status': 'success',
         'lots': [dict(l) for l in lots]
+    })
+
+
+# ===== B2B Customer & Order Management =====
+
+@roast_tracker.route('/b2b/customers')
+@tracker_login_required
+def b2b_customers():
+    """List all B2B customers"""
+    customers = query_db("""
+        SELECT c.*,
+               (SELECT COUNT(*) FROM b2b_orders WHERE customer_id = c.id) as order_count,
+               (SELECT SUM(total) FROM b2b_orders WHERE customer_id = c.id AND payment_status = 'paid') as total_paid
+        FROM b2b_customers c
+        WHERE c.is_active = 1
+        ORDER BY c.company_name
+    """)
+    return render_template('roast_tracker/b2b_customers.html', customers=customers)
+
+
+@roast_tracker.route('/b2b/customers/new', methods=['GET', 'POST'])
+@tracker_login_required
+def b2b_customer_new():
+    """Create new B2B customer"""
+    if request.method == 'POST':
+        company_name = request.form.get('company_name')
+        contact_name = request.form.get('contact_name')
+        email = request.form.get('email')
+        phone = request.form.get('phone')
+        vat_number = request.form.get('vat_number')
+        address = request.form.get('address')
+        city = request.form.get('city')
+        postal_code = request.form.get('postal_code')
+        country = request.form.get('country', 'HU')
+        default_discount = request.form.get('default_discount_percent', type=float) or 0
+        payment_terms = request.form.get('payment_terms_days', type=int) or 14
+        notes = request.form.get('notes')
+
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO b2b_customers (
+                company_name, contact_name, email, phone, vat_number,
+                address, city, postal_code, country,
+                default_discount_percent, payment_terms_days, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (company_name, contact_name, email, phone, vat_number,
+              address, city, postal_code, country,
+              default_discount, payment_terms, notes))
+        customer_id = cur.lastrowid
+        conn.commit()
+        conn.close()
+
+        flash(f'Customer "{company_name}" created successfully', 'success')
+        return redirect(url_for('roast_tracker.b2b_customer_edit', customer_id=customer_id))
+
+    return render_template('roast_tracker/b2b_customer_form.html', customer=None)
+
+
+@roast_tracker.route('/b2b/customers/<int:customer_id>', methods=['GET', 'POST'])
+@tracker_login_required
+def b2b_customer_edit(customer_id):
+    """View/edit B2B customer"""
+    if request.method == 'POST':
+        company_name = request.form.get('company_name')
+        contact_name = request.form.get('contact_name')
+        email = request.form.get('email')
+        phone = request.form.get('phone')
+        vat_number = request.form.get('vat_number')
+        address = request.form.get('address')
+        city = request.form.get('city')
+        postal_code = request.form.get('postal_code')
+        country = request.form.get('country', 'HU')
+        default_discount = request.form.get('default_discount_percent', type=float) or 0
+        payment_terms = request.form.get('payment_terms_days', type=int) or 14
+        notes = request.form.get('notes')
+
+        conn = get_db()
+        conn.execute("""
+            UPDATE b2b_customers SET
+                company_name = ?, contact_name = ?, email = ?, phone = ?, vat_number = ?,
+                address = ?, city = ?, postal_code = ?, country = ?,
+                default_discount_percent = ?, payment_terms_days = ?, notes = ?
+            WHERE id = ?
+        """, (company_name, contact_name, email, phone, vat_number,
+              address, city, postal_code, country,
+              default_discount, payment_terms, notes, customer_id))
+        conn.commit()
+        conn.close()
+
+        flash('Customer updated successfully', 'success')
+        return redirect(url_for('roast_tracker.b2b_customer_edit', customer_id=customer_id))
+
+    customer = query_db("SELECT * FROM b2b_customers WHERE id = ?", (customer_id,), one=True)
+    if not customer:
+        flash('Customer not found', 'error')
+        return redirect(url_for('roast_tracker.b2b_customers'))
+
+    # Get customer's product-specific discounts
+    discounts = query_db("""
+        SELECT d.*, p.name as product_name
+        FROM b2b_customer_discounts d
+        LEFT JOIN coffee_products p ON d.product_id = p.id
+        WHERE d.customer_id = ?
+    """, (customer_id,))
+
+    # Get all products for discount dropdown
+    products = query_db("SELECT id, name FROM coffee_products WHERE is_active = 1 AND COALESCE(is_archived, 0) = 0 ORDER BY name")
+
+    # Get customer's orders
+    orders = query_db("""
+        SELECT * FROM b2b_orders
+        WHERE customer_id = ?
+        ORDER BY order_date DESC
+        LIMIT 10
+    """, (customer_id,))
+
+    return render_template('roast_tracker/b2b_customer_form.html',
+                           customer=customer, discounts=discounts,
+                           products=products, orders=orders)
+
+
+@roast_tracker.route('/b2b/customers/<int:customer_id>/discounts', methods=['POST'])
+@tracker_login_required
+def b2b_customer_discounts(customer_id):
+    """Add/update product-specific discount for customer"""
+    product_id = request.form.get('product_id', type=int)
+    discount_percent = request.form.get('discount_percent', type=float)
+
+    if not product_id or discount_percent is None:
+        flash('Product and discount are required', 'error')
+        return redirect(url_for('roast_tracker.b2b_customer_edit', customer_id=customer_id))
+
+    conn = get_db()
+    # Use REPLACE to insert or update
+    conn.execute("""
+        INSERT OR REPLACE INTO b2b_customer_discounts (customer_id, product_id, discount_percent)
+        VALUES (?, ?, ?)
+    """, (customer_id, product_id, discount_percent))
+    conn.commit()
+    conn.close()
+
+    flash('Product discount saved', 'success')
+    return redirect(url_for('roast_tracker.b2b_customer_edit', customer_id=customer_id))
+
+
+@roast_tracker.route('/b2b/customers/<int:customer_id>/discounts/<int:discount_id>/delete', methods=['POST'])
+@tracker_login_required
+def b2b_customer_discount_delete(customer_id, discount_id):
+    """Delete product-specific discount"""
+    conn = get_db()
+    conn.execute("DELETE FROM b2b_customer_discounts WHERE id = ? AND customer_id = ?",
+                 (discount_id, customer_id))
+    conn.commit()
+    conn.close()
+    flash('Product discount removed', 'success')
+    return redirect(url_for('roast_tracker.b2b_customer_edit', customer_id=customer_id))
+
+
+@roast_tracker.route('/b2b/orders')
+@tracker_login_required
+def b2b_orders():
+    """List all B2B orders"""
+    status_filter = request.args.get('status', '')
+    payment_filter = request.args.get('payment', '')
+
+    query = """
+        SELECT o.*, c.company_name,
+               (SELECT COALESCE(SUM(quantity), 0) FROM b2b_order_items WHERE order_id = o.id) as item_count
+        FROM b2b_orders o
+        JOIN b2b_customers c ON o.customer_id = c.id
+        WHERE 1=1
+    """
+    params = []
+
+    if status_filter:
+        query += " AND o.status = ?"
+        params.append(status_filter)
+    if payment_filter:
+        query += " AND o.payment_status = ?"
+        params.append(payment_filter)
+
+    query += " ORDER BY o.order_date DESC, o.id DESC"
+
+    orders = query_db(query, params)
+    customers = query_db("SELECT id, company_name FROM b2b_customers WHERE is_active = 1 ORDER BY company_name")
+
+    return render_template('roast_tracker/b2b_orders.html',
+                           orders=orders, customers=customers,
+                           status_filter=status_filter, payment_filter=payment_filter,
+                           today=date.today().isoformat())
+
+
+@roast_tracker.route('/b2b/orders/new', methods=['GET', 'POST'])
+@tracker_login_required
+def b2b_order_new():
+    """Create new B2B order"""
+    if request.method == 'POST':
+        customer_id = request.form.get('customer_id', type=int)
+        order_date = request.form.get('order_date') or date.today().isoformat()
+        notes = request.form.get('notes')
+
+        if not customer_id:
+            flash('Please select a customer', 'error')
+            return redirect(url_for('roast_tracker.b2b_order_new'))
+
+        # Get customer's payment terms for due date
+        customer = query_db("SELECT payment_terms_days FROM b2b_customers WHERE id = ?",
+                            (customer_id,), one=True)
+        payment_terms = customer['payment_terms_days'] if customer else 14
+
+        order_dt = datetime.strptime(order_date, '%Y-%m-%d')
+        due_date = (order_dt + timedelta(days=payment_terms)).strftime('%Y-%m-%d')
+
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO b2b_orders (customer_id, order_date, due_date, notes)
+            VALUES (?, ?, ?, ?)
+        """, (customer_id, order_date, due_date, notes))
+        order_id = cur.lastrowid
+        conn.commit()
+        conn.close()
+
+        flash('Order created. Add items to the order.', 'success')
+        return redirect(url_for('roast_tracker.b2b_order_detail', order_id=order_id))
+
+    customers = query_db("SELECT id, company_name FROM b2b_customers WHERE is_active = 1 ORDER BY company_name")
+    return render_template('roast_tracker/b2b_order_form.html', customers=customers, today=date.today().isoformat())
+
+
+@roast_tracker.route('/b2b/orders/<int:order_id>')
+@tracker_login_required
+def b2b_order_detail(order_id):
+    """View B2B order detail"""
+    order = query_db("""
+        SELECT o.*, c.company_name, c.email, c.vat_number, c.default_discount_percent
+        FROM b2b_orders o
+        JOIN b2b_customers c ON o.customer_id = c.id
+        WHERE o.id = ?
+    """, (order_id,), one=True)
+
+    if not order:
+        flash('Order not found', 'error')
+        return redirect(url_for('roast_tracker.b2b_orders'))
+
+    items = query_db("SELECT * FROM b2b_order_items WHERE order_id = ? ORDER BY id", (order_id,))
+
+    # Get available products from POS items table
+    import sqlite3
+    pos_db_path = '/home/brenesamerica/POS/pos_prod.db' if os.environ.get('BILLINGO_ENV') == 'prod' else '/home/brenesamerica/POS/pos_test.db'
+    pos_conn = sqlite3.connect(pos_db_path)
+    pos_conn.row_factory = sqlite3.Row
+    pos_products = pos_conn.execute("""
+        SELECT i.*, c.name as category_name
+        FROM items i
+        LEFT JOIN categories c ON i.category_id = c.id
+        ORDER BY c.name, i.name
+    """).fetchall()
+    pos_conn.close()
+
+    # Get coffee products from roast tracker (manually added coffees)
+    roast_tracker_products = query_db("""
+        SELECT
+            cp.id,
+            cp.name,
+            gc.country as category_name,
+            cp.roast_level,
+            NULL as price
+        FROM coffee_products cp
+        LEFT JOIN green_coffee gc ON cp.green_coffee_id = gc.id
+        WHERE cp.is_active = 1
+        ORDER BY gc.country, cp.name
+    """)
+
+    # Combine products: POS items first, then roast tracker coffee products
+    products = list(pos_products) + [dict(p) for p in roast_tracker_products]
+
+    # Get customer's product discounts
+    customer_discounts = query_db("""
+        SELECT product_id, discount_percent
+        FROM b2b_customer_discounts
+        WHERE customer_id = ?
+    """, (order['customer_id'],))
+    discount_map = {d['product_id']: d['discount_percent'] for d in customer_discounts}
+
+    # Get existing LOT assignments for this B2B order
+    b2b_order_id = f"B2B-{order_id}"
+    lot_assignments = query_db("""
+        SELECT ola.*, pb.production_lot, rb.lot_number as source_lot,
+               cp.name as product_name, pb.package_size_g
+        FROM order_lot_assignments ola
+        JOIN production_batches pb ON ola.production_batch_id = pb.id
+        LEFT JOIN production_sources ps ON pb.id = ps.production_batch_id
+        LEFT JOIN roast_batches rb ON ps.roast_batch_id = rb.id
+        LEFT JOIN coffee_products cp ON rb.product_id = cp.id
+        WHERE ola.wc_order_id = ?
+        ORDER BY ola.wc_order_item_id, ola.slot_number
+    """, (b2b_order_id,))
+
+    # Group assignments by item_id
+    assignments_by_item = {}
+    for a in lot_assignments:
+        item_id = a['wc_order_item_id']
+        if item_id not in assignments_by_item:
+            assignments_by_item[item_id] = []
+        assignments_by_item[item_id].append(dict(a))
+
+    # Get invoices for this order with payment status
+    invoices = query_db("""
+        SELECT DISTINCT billingo_document_id, MIN(invoiced_at) as invoiced_at, payment_status
+        FROM b2b_item_invoices
+        WHERE order_id = ?
+        GROUP BY billingo_document_id
+        ORDER BY invoiced_at DESC
+    """, (order_id,))
+
+    # Get invoice status for each item (how many have been invoiced)
+    item_invoice_status = query_db("""
+        SELECT order_item_id as item_id, SUM(quantity_invoiced) as invoiced
+        FROM b2b_item_invoices
+        WHERE order_id = ?
+        GROUP BY order_item_id
+    """, (order_id,))
+
+    # Calculate order payment status based on invoices
+    if invoices:
+        paid_count = sum(1 for inv in invoices if inv['payment_status'] == 'paid')
+        total_invoices = len(invoices)
+        if paid_count == total_invoices:
+            calculated_payment_status = 'paid'
+        elif paid_count > 0:
+            calculated_payment_status = 'partially_paid'
+        else:
+            calculated_payment_status = 'unpaid'
+    else:
+        calculated_payment_status = 'unpaid'
+
+    return render_template('roast_tracker/b2b_order_detail.html',
+                           order=order, items=items, products=products,
+                           discount_map=discount_map,
+                           assignments_by_item=assignments_by_item,
+                           invoices=invoices,
+                           item_invoice_status=item_invoice_status,
+                           calculated_payment_status=calculated_payment_status)
+
+
+@roast_tracker.route('/b2b/orders/<int:order_id>/items', methods=['POST'])
+@tracker_login_required
+def b2b_order_add_item(order_id):
+    """Add item to B2B order"""
+    product_id = request.form.get('product_id', type=int)
+    product_name = request.form.get('product_name')
+    quantity = request.form.get('quantity', type=int) or 1
+    unit_price = request.form.get('unit_price', type=float)
+    discount_percent = request.form.get('discount_percent', type=float) or 0
+    package_size = request.form.get('package_size_g', type=int) or 250
+
+    if not product_name or not unit_price:
+        flash('Product name and price are required', 'error')
+        return redirect(url_for('roast_tracker.b2b_order_detail', order_id=order_id))
+
+    # Calculate line total after discount
+    discounted_price = unit_price * (1 - discount_percent / 100)
+    line_total = discounted_price * quantity
+
+    conn = get_db()
+    conn.execute("""
+        INSERT INTO b2b_order_items (order_id, product_name, product_id, package_size_g,
+                                     quantity, unit_price, discount_percent, line_total)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (order_id, product_name, product_id, package_size, quantity, unit_price, discount_percent, line_total))
+
+    # Update order totals
+    conn.execute("""
+        UPDATE b2b_orders SET
+            subtotal = (SELECT SUM(unit_price * quantity) FROM b2b_order_items WHERE order_id = ?),
+            discount_total = (SELECT SUM(unit_price * quantity * discount_percent / 100) FROM b2b_order_items WHERE order_id = ?),
+            total = (SELECT SUM(line_total) FROM b2b_order_items WHERE order_id = ?)
+        WHERE id = ?
+    """, (order_id, order_id, order_id, order_id))
+
+    conn.commit()
+    conn.close()
+
+    flash(f'Added {quantity}x {product_name}', 'success')
+    return redirect(url_for('roast_tracker.b2b_order_detail', order_id=order_id))
+
+
+@roast_tracker.route('/b2b/orders/<int:order_id>/items/<int:item_id>/delete', methods=['POST'])
+@tracker_login_required
+def b2b_order_delete_item(order_id, item_id):
+    """Remove item from B2B order"""
+    conn = get_db()
+    conn.execute("DELETE FROM b2b_order_items WHERE id = ? AND order_id = ?", (item_id, order_id))
+
+    # Update order totals
+    conn.execute("""
+        UPDATE b2b_orders SET
+            subtotal = COALESCE((SELECT SUM(unit_price * quantity) FROM b2b_order_items WHERE order_id = ?), 0),
+            discount_total = COALESCE((SELECT SUM(unit_price * quantity * discount_percent / 100) FROM b2b_order_items WHERE order_id = ?), 0),
+            total = COALESCE((SELECT SUM(line_total) FROM b2b_order_items WHERE order_id = ?), 0)
+        WHERE id = ?
+    """, (order_id, order_id, order_id, order_id))
+
+    conn.commit()
+    conn.close()
+
+    flash('Item removed', 'success')
+    return redirect(url_for('roast_tracker.b2b_order_detail', order_id=order_id))
+
+
+@roast_tracker.route('/b2b/orders/<int:order_id>/items/<int:item_id>/edit', methods=['POST'])
+@tracker_login_required
+def b2b_order_edit_item(order_id, item_id):
+    """Edit item in B2B order"""
+    product_name = request.form.get('product_name')
+    package_size_g = request.form.get('package_size_g', type=int)
+    quantity = request.form.get('quantity', type=int)
+    unit_price = request.form.get('unit_price', type=float)
+    discount_percent = request.form.get('discount_percent', type=float, default=0)
+
+    if not all([product_name, package_size_g, quantity, unit_price is not None]):
+        flash('All fields are required', 'error')
+        return redirect(url_for('roast_tracker.b2b_order_detail', order_id=order_id))
+
+    line_total = unit_price * quantity * (1 - discount_percent / 100)
+
+    conn = get_db()
+    conn.execute("""
+        UPDATE b2b_order_items SET
+            product_name = ?,
+            package_size_g = ?,
+            quantity = ?,
+            unit_price = ?,
+            discount_percent = ?,
+            line_total = ?
+        WHERE id = ? AND order_id = ?
+    """, (product_name, package_size_g, quantity, unit_price, discount_percent, line_total, item_id, order_id))
+
+    # Update order totals
+    conn.execute("""
+        UPDATE b2b_orders SET
+            subtotal = COALESCE((SELECT SUM(unit_price * quantity) FROM b2b_order_items WHERE order_id = ?), 0),
+            discount_total = COALESCE((SELECT SUM(unit_price * quantity * discount_percent / 100) FROM b2b_order_items WHERE order_id = ?), 0),
+            total = COALESCE((SELECT SUM(line_total) FROM b2b_order_items WHERE order_id = ?), 0)
+        WHERE id = ?
+    """, (order_id, order_id, order_id, order_id))
+
+    conn.commit()
+    conn.close()
+
+    flash('Item updated', 'success')
+    return redirect(url_for('roast_tracker.b2b_order_detail', order_id=order_id))
+
+
+@roast_tracker.route('/b2b/orders/<int:order_id>/status', methods=['POST'])
+@tracker_login_required
+def b2b_order_status(order_id):
+    """Update order status or payment status"""
+    status = request.form.get('status')
+    payment_status = request.form.get('payment_status')
+
+    conn = get_db()
+    if status:
+        conn.execute("UPDATE b2b_orders SET status = ? WHERE id = ?", (status, order_id))
+    if payment_status:
+        conn.execute("UPDATE b2b_orders SET payment_status = ? WHERE id = ?", (payment_status, order_id))
+    conn.commit()
+    conn.close()
+
+    flash('Order updated', 'success')
+    return redirect(url_for('roast_tracker.b2b_order_detail', order_id=order_id))
+
+
+@roast_tracker.route('/b2b/orders/<int:order_id>/invoice', methods=['POST'])
+@tracker_login_required
+def b2b_order_generate_invoice(order_id):
+    """Generate Billingo invoice for all remaining (uninvoiced) items in B2B order"""
+    import requests
+    import json
+
+    # Get Billingo settings from app config
+    import sys
+    sys.path.insert(0, '..')
+    from app import BILLINGO_API_KEY, BILLINGO_BASE_URL, BILLINGO_INVOICE_BLOCK_ID
+
+    # Get order with customer details
+    order = query_db("""
+        SELECT o.*, c.company_name, c.email, c.vat_number, c.address, c.city,
+               c.postal_code, c.country, c.billingo_partner_id, c.payment_terms_days
+        FROM b2b_orders o
+        JOIN b2b_customers c ON o.customer_id = c.id
+        WHERE o.id = ?
+    """, (order_id,), one=True)
+
+    if not order:
+        flash('Order not found', 'error')
+        return redirect(url_for('roast_tracker.b2b_orders'))
+
+    # Get order items
+    items = query_db("SELECT * FROM b2b_order_items WHERE order_id = ? ORDER BY id", (order_id,))
+
+    if not items:
+        flash('Cannot generate invoice for empty order', 'error')
+        return redirect(url_for('roast_tracker.b2b_order_detail', order_id=order_id))
+
+    # Get already invoiced quantities per item
+    invoiced_items = query_db("""
+        SELECT order_item_id, SUM(quantity_invoiced) as invoiced
+        FROM b2b_item_invoices WHERE order_id = ?
+        GROUP BY order_item_id
+    """, (order_id,))
+    invoiced_map = {i['order_item_id']: i['invoiced'] for i in invoiced_items}
+
+    # Filter to only items with remaining quantity
+    items_to_invoice = []
+    for item in items:
+        already_invoiced = invoiced_map.get(item['id'], 0)
+        remaining = item['quantity'] - already_invoiced
+        if remaining > 0:
+            items_to_invoice.append((item, remaining))
+
+    if not items_to_invoice:
+        flash('All items have already been invoiced', 'info')
+        return redirect(url_for('roast_tracker.b2b_order_detail', order_id=order_id))
+
+    # Get payment method from form
+    payment_method = request.form.get('payment_method', 'wire_transfer')
+
+    # Get LOT assignments for this order
+    lot_assignments = query_db("""
+        SELECT ola.wc_order_item_id, pb.production_lot, rb.lot_number as source_lot
+        FROM order_lot_assignments ola
+        JOIN production_batches pb ON ola.production_batch_id = pb.id
+        LEFT JOIN roast_batches rb ON ola.roast_batch_id = rb.id
+        WHERE ola.wc_order_id = ?
+        ORDER BY ola.wc_order_item_id, ola.slot_number
+    """, (f"B2B-{order_id}",))
+
+    # Group LOT numbers by item
+    item_lots = {}
+    for assignment in lot_assignments:
+        item_id = assignment['wc_order_item_id']
+        lot = assignment['source_lot'] or assignment['production_lot']
+        if item_id not in item_lots:
+            item_lots[item_id] = []
+        item_lots[item_id].append(lot)
+
+    # Check/create Billingo partner
+    partner_id = order['billingo_partner_id']
+    if not partner_id:
+        partner_id = _create_billingo_partner(order, BILLINGO_API_KEY, BILLINGO_BASE_URL)
+        if not partner_id:
+            flash('Failed to create Billingo partner', 'error')
+            return redirect(url_for('roast_tracker.b2b_order_detail', order_id=order_id))
+
+    # Prepare invoice items with LOT numbers in comments
+    invoice_items = []
+    invoice_item_records = []  # For tracking in b2b_item_invoices
+
+    for item, qty_to_invoice in items_to_invoice:
+        # Get LOT numbers for this item (take the first N based on qty_to_invoice)
+        lots = item_lots.get(item['id'], [])[:qty_to_invoice]
+        lot_comment = f"LOT: {', '.join(lots)}" if lots else ""
+
+        # Calculate net price with discount applied
+        gross_price = item['unit_price']
+        discount_percent = item['discount_percent'] or 0
+        discounted_gross_price = gross_price * (1 - discount_percent / 100)
+        net_price = discounted_gross_price / 1.27  # Remove 27% VAT
+
+        invoice_items.append({
+            "name": item['product_name'].strip(),
+            "unit_price": round(net_price, 2),
+            "unit_price_type": "net",
+            "quantity": qty_to_invoice,
+            "unit": "db",
+            "vat": "27%",
+            "comment": lot_comment
+        })
+
+        invoice_item_records.append({
+            'item_id': item['id'],
+            'quantity': qty_to_invoice,
+            'lots': lots
+        })
+
+    # Create invoice
+    document_id = _create_billingo_invoice(
+        order, partner_id, payment_method, invoice_items,
+        BILLINGO_API_KEY, BILLINGO_BASE_URL, BILLINGO_INVOICE_BLOCK_ID
+    )
+
+    if document_id:
+        # Record invoiced items
+        conn = get_db()
+        for record in invoice_item_records:
+            conn.execute("""
+                INSERT INTO b2b_item_invoices (order_id, order_item_id, billingo_document_id, quantity_invoiced, lot_numbers)
+                VALUES (?, ?, ?, ?, ?)
+            """, (order_id, record['item_id'], document_id, record['quantity'], json.dumps(record['lots'])))
+
+        # Also update legacy field for compatibility
+        conn.execute("UPDATE b2b_orders SET billingo_document_id = ? WHERE id = ?", (document_id, order_id))
+        conn.commit()
+        conn.close()
+
+        flash(f'Invoice #{document_id} generated successfully!', 'success')
+    else:
+        flash('Failed to create invoice', 'error')
+
+    return redirect(url_for('roast_tracker.b2b_order_detail', order_id=order_id))
+
+
+@roast_tracker.route('/b2b/orders/<int:order_id>/invoice/partial', methods=['POST'])
+@tracker_login_required
+def b2b_order_generate_partial_invoice(order_id):
+    """Generate Billingo invoice for selected items in B2B order"""
+    import requests
+    import json
+
+    import sys
+    sys.path.insert(0, '..')
+    from app import BILLINGO_API_KEY, BILLINGO_BASE_URL, BILLINGO_INVOICE_BLOCK_ID
+
+    # Get order with customer details
+    order = query_db("""
+        SELECT o.*, c.company_name, c.email, c.vat_number, c.address, c.city,
+               c.postal_code, c.country, c.billingo_partner_id, c.payment_terms_days
+        FROM b2b_orders o
+        JOIN b2b_customers c ON o.customer_id = c.id
+        WHERE o.id = ?
+    """, (order_id,), one=True)
+
+    if not order:
+        flash('Order not found', 'error')
+        return redirect(url_for('roast_tracker.b2b_orders'))
+
+    # Get selected item IDs and quantities
+    item_ids = request.form.getlist('item_ids')
+    if not item_ids:
+        flash('No items selected for invoice', 'error')
+        return redirect(url_for('roast_tracker.b2b_order_detail', order_id=order_id))
+
+    payment_method = request.form.get('payment_method', 'wire_transfer')
+
+    # Get LOT assignments for this order
+    lot_assignments = query_db("""
+        SELECT ola.wc_order_item_id, pb.production_lot, rb.lot_number as source_lot
+        FROM order_lot_assignments ola
+        JOIN production_batches pb ON ola.production_batch_id = pb.id
+        LEFT JOIN roast_batches rb ON ola.roast_batch_id = rb.id
+        WHERE ola.wc_order_id = ?
+        ORDER BY ola.wc_order_item_id, ola.slot_number
+    """, (f"B2B-{order_id}",))
+
+    item_lots = {}
+    for assignment in lot_assignments:
+        item_id = assignment['wc_order_item_id']
+        lot = assignment['source_lot'] or assignment['production_lot']
+        if item_id not in item_lots:
+            item_lots[item_id] = []
+        item_lots[item_id].append(lot)
+
+    # Check/create Billingo partner
+    partner_id = order['billingo_partner_id']
+    if not partner_id:
+        partner_id = _create_billingo_partner(order, BILLINGO_API_KEY, BILLINGO_BASE_URL)
+        if not partner_id:
+            flash('Failed to create Billingo partner', 'error')
+            return redirect(url_for('roast_tracker.b2b_order_detail', order_id=order_id))
+
+    # Prepare invoice items
+    invoice_items = []
+    invoice_item_records = []
+
+    for item_id_str in item_ids:
+        item_id = int(item_id_str)
+        item = query_db("SELECT * FROM b2b_order_items WHERE id = ?", (item_id,), one=True)
+        if not item:
+            continue
+
+        # Get quantity to invoice from form
+        qty_to_invoice = request.form.get(f'qty_{item_id}', type=int) or 1
+
+        # Get selected LOTs from form (if provided)
+        lots_json = request.form.get(f'lots_{item_id}', '')
+        if lots_json:
+            try:
+                selected_lots = json.loads(lots_json)
+            except:
+                selected_lots = item_lots.get(item_id, [])[:qty_to_invoice]
+        else:
+            selected_lots = item_lots.get(item_id, [])[:qty_to_invoice]
+
+        lot_comment = f"LOT: {', '.join(selected_lots)}" if selected_lots else ""
+
+        # Calculate net price with discount applied
+        gross_price = item['unit_price']
+        discount_percent = item['discount_percent'] or 0
+        discounted_gross_price = gross_price * (1 - discount_percent / 100)
+        net_price = discounted_gross_price / 1.27  # Remove 27% VAT
+
+        invoice_items.append({
+            "name": item['product_name'].strip(),
+            "unit_price": round(net_price, 2),
+            "unit_price_type": "net",
+            "quantity": qty_to_invoice,
+            "unit": "db",
+            "vat": "27%",
+            "comment": lot_comment
+        })
+
+        invoice_item_records.append({
+            'item_id': item_id,
+            'quantity': qty_to_invoice,
+            'lots': selected_lots
+        })
+
+    if not invoice_items:
+        flash('No valid items to invoice', 'error')
+        return redirect(url_for('roast_tracker.b2b_order_detail', order_id=order_id))
+
+    # Create invoice
+    document_id = _create_billingo_invoice(
+        order, partner_id, payment_method, invoice_items,
+        BILLINGO_API_KEY, BILLINGO_BASE_URL, BILLINGO_INVOICE_BLOCK_ID
+    )
+
+    if document_id:
+        # Record invoiced items
+        conn = get_db()
+        for record in invoice_item_records:
+            conn.execute("""
+                INSERT INTO b2b_item_invoices (order_id, order_item_id, billingo_document_id, quantity_invoiced, lot_numbers)
+                VALUES (?, ?, ?, ?, ?)
+            """, (order_id, record['item_id'], document_id, record['quantity'], json.dumps(record['lots'])))
+        conn.commit()
+        conn.close()
+
+        flash(f'Partial invoice #{document_id} generated successfully!', 'success')
+    else:
+        flash('Failed to create invoice', 'error')
+
+    return redirect(url_for('roast_tracker.b2b_order_detail', order_id=order_id))
+
+
+def _create_billingo_partner(order, api_key, base_url):
+    """Helper to create Billingo partner"""
+    import requests
+
+    partner_payload = {
+        "name": order['company_name'],
+        "address": {
+            "country_code": order['country'] or "HU",
+            "post_code": order['postal_code'] or "",
+            "city": order['city'] or "",
+            "address": order['address'] or ""
+        },
+        "taxcode": order['vat_number'] or ""
+    }
+    if order['email']:
+        partner_payload["emails"] = [order['email']]
+
+    headers = {
+        "X-API-KEY": api_key,
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(f"{base_url}/partners", json=partner_payload, headers=headers)
+
+    if response.status_code == 201:
+        partner_data = response.json()
+        partner_id = partner_data['id']
+        # Save partner ID to customer
+        conn = get_db()
+        conn.execute("UPDATE b2b_customers SET billingo_partner_id = ? WHERE id = ?",
+                    (partner_id, order['customer_id']))
+        conn.commit()
+        conn.close()
+        return partner_id
+    return None
+
+
+def _create_billingo_invoice(order, partner_id, payment_method, items, api_key, base_url, block_id):
+    """Helper to create Billingo invoice"""
+    import requests
+    from datetime import date
+
+    # For consignment orders, use today's date for both fulfillment and due date
+    if order['status'] == 'consignment':
+        today = date.today().isoformat()
+        fulfillment_date = today
+        due_date = today
+    else:
+        fulfillment_date = order['order_date']
+        due_date = order['due_date']
+
+    invoice_payload = {
+        "partner_id": partner_id,
+        "block_id": block_id,
+        "type": "invoice",
+        "fulfillment_date": fulfillment_date,
+        "due_date": due_date,
+        "payment_method": payment_method,
+        "language": "hu",
+        "currency": "HUF",
+        "conversion_rate": 1,
+        "electronic": True,
+        "paid": order['payment_status'] == 'paid',
+        "items": items,
+        "comment": order['notes'] or ""
+    }
+
+    headers = {
+        "X-API-KEY": api_key,
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(f"{base_url}/documents", json=invoice_payload, headers=headers)
+
+    if response.status_code == 201:
+        return response.json()['id']
+    return None
+
+
+@roast_tracker.route('/b2b/invoice/<int:document_id>/download')
+@tracker_login_required
+def b2b_download_invoice_by_id(document_id):
+    """Download invoice PDF by Billingo document ID"""
+    import requests
+    import io
+    from flask import send_file
+
+    import sys
+    sys.path.insert(0, '..')
+    from app import BILLINGO_API_KEY, BILLINGO_BASE_URL
+
+    headers = {"X-API-KEY": BILLINGO_API_KEY}
+
+    response = requests.get(f"{BILLINGO_BASE_URL}/documents/{document_id}/download", headers=headers)
+
+    if response.status_code == 200:
+        pdf_stream = io.BytesIO(response.content)
+        return send_file(
+            pdf_stream,
+            as_attachment=True,
+            download_name=f"invoice_{document_id}.pdf",
+            mimetype="application/pdf"
+        )
+    else:
+        flash('Failed to download invoice', 'error')
+        return redirect(request.referrer or url_for('roast_tracker.b2b_orders'))
+
+
+@roast_tracker.route('/b2b/orders/<int:order_id>/invoice/<int:document_id>/cancel', methods=['POST'])
+@tracker_login_required
+def b2b_cancel_invoice_by_id(order_id, document_id):
+    """Cancel/Sztornó a specific invoice by document ID"""
+    import requests
+
+    import sys
+    sys.path.insert(0, '..')
+    from app import BILLINGO_API_KEY, BILLINGO_BASE_URL
+
+    cancellation_reason = request.form.get('cancellation_reason', 'Cancelled')
+
+    headers = {
+        "X-API-KEY": BILLINGO_API_KEY,
+        "Content-Type": "application/json"
+    }
+
+    # Create cancellation document in Billingo
+    response = requests.post(
+        f"{BILLINGO_BASE_URL}/documents/{document_id}/cancel",
+        headers=headers,
+        json={"cancellation_reason": cancellation_reason}
+    )
+
+    if response.status_code in [200, 201]:
+        # Remove the invoice records from our tracking table
+        conn = get_db()
+        conn.execute("DELETE FROM b2b_item_invoices WHERE order_id = ? AND billingo_document_id = ?",
+                    (order_id, document_id))
+
+        # If this was the main order invoice, clear that too
+        conn.execute("UPDATE b2b_orders SET billingo_document_id = NULL WHERE id = ? AND billingo_document_id = ?",
+                    (order_id, document_id))
+        conn.commit()
+        conn.close()
+
+        flash(f'Invoice #{document_id} cancelled successfully (Sztornó created)', 'success')
+    else:
+        flash(f'Failed to cancel invoice: {response.text}', 'error')
+
+    return redirect(url_for('roast_tracker.b2b_order_detail', order_id=order_id))
+
+
+@roast_tracker.route('/b2b/orders/<int:order_id>/invoice/<int:document_id>/payment', methods=['POST'])
+@tracker_login_required
+def b2b_invoice_payment_status(order_id, document_id):
+    """Update payment status for a specific invoice"""
+    payment_status = request.form.get('payment_status', 'unpaid')
+
+    conn = get_db()
+    conn.execute("""
+        UPDATE b2b_item_invoices
+        SET payment_status = ?
+        WHERE order_id = ? AND billingo_document_id = ?
+    """, (payment_status, order_id, document_id))
+    conn.commit()
+    conn.close()
+
+    flash(f'Invoice #{document_id} marked as {payment_status}', 'success')
+    return redirect(url_for('roast_tracker.b2b_order_detail', order_id=order_id))
+
+
+@roast_tracker.route('/b2b/orders/<int:order_id>/invoice/download')
+@tracker_login_required
+def b2b_order_download_invoice(order_id):
+    """Download invoice PDF for B2B order"""
+    import requests
+    import io
+    from flask import send_file
+
+    import sys
+    sys.path.insert(0, '..')
+    from app import BILLINGO_API_KEY, BILLINGO_BASE_URL
+
+    order = query_db("SELECT billingo_document_id FROM b2b_orders WHERE id = ?", (order_id,), one=True)
+
+    if not order or not order['billingo_document_id']:
+        flash('No invoice found for this order', 'error')
+        return redirect(url_for('roast_tracker.b2b_order_detail', order_id=order_id))
+
+    document_id = order['billingo_document_id']
+
+    headers = {
+        "X-API-KEY": BILLINGO_API_KEY
+    }
+
+    response = requests.get(
+        f"{BILLINGO_BASE_URL}/documents/{document_id}/download",
+        headers=headers
+    )
+
+    if response.status_code == 200:
+        pdf_stream = io.BytesIO(response.content)
+        return send_file(
+            pdf_stream,
+            as_attachment=True,
+            download_name=f"invoice_B2B_{order_id}.pdf",
+            mimetype="application/pdf"
+        )
+    else:
+        flash(f'Failed to download invoice: {response.text}', 'error')
+        return redirect(url_for('roast_tracker.b2b_order_detail', order_id=order_id))
+
+
+@roast_tracker.route('/b2b/orders/<int:order_id>/invoice/cancel', methods=['POST'])
+@tracker_login_required
+def b2b_order_cancel_invoice(order_id):
+    """Cancel/Sztornó invoice for B2B order"""
+    import requests
+
+    import sys
+    sys.path.insert(0, '..')
+    from app import BILLINGO_API_KEY, BILLINGO_BASE_URL
+
+    cancellation_reason = request.form.get('cancellation_reason', 'Sztornó')
+
+    order = query_db("SELECT billingo_document_id FROM b2b_orders WHERE id = ?", (order_id,), one=True)
+
+    if not order or not order['billingo_document_id']:
+        flash('No invoice found for this order', 'error')
+        return redirect(url_for('roast_tracker.b2b_order_detail', order_id=order_id))
+
+    document_id = order['billingo_document_id']
+
+    headers = {
+        "X-API-KEY": BILLINGO_API_KEY,
+        "Content-Type": "application/json"
+    }
+
+    # Call Billingo API to cancel the document
+    response = requests.post(
+        f"{BILLINGO_BASE_URL}/documents/{document_id}/cancel",
+        headers=headers,
+        json={"cancellation_reason": cancellation_reason}
+    )
+
+    if response.status_code in [200, 201]:
+        # Clear the document ID from order so a new invoice can be generated
+        conn = get_db()
+        conn.execute("UPDATE b2b_orders SET billingo_document_id = NULL WHERE id = ?", (order_id,))
+        conn.commit()
+        conn.close()
+
+        flash(f'Invoice cancelled successfully. Reason: {cancellation_reason}', 'success')
+    else:
+        flash(f'Failed to cancel invoice: {response.text}', 'error')
+
+    return redirect(url_for('roast_tracker.b2b_order_detail', order_id=order_id))
+
+
+# ============ WooCommerce Invoice Routes ============
+
+@roast_tracker.route('/wc/orders/<int:order_id>/invoice', methods=['POST'])
+@tracker_login_required
+def wc_generate_invoice(order_id):
+    """Generate Billingo invoice for WooCommerce order"""
+    import requests
+    from datetime import date
+
+    import sys
+    sys.path.insert(0, '..')
+    from app import BILLINGO_API_KEY, BILLINGO_BASE_URL, BILLINGO_INVOICE_BLOCK_ID, fetch_wc_orders
+
+    # Check if invoice already exists
+    existing = query_db("SELECT billingo_document_id FROM wc_order_invoices WHERE wc_order_id = ?",
+                        (order_id,), one=True)
+    if existing:
+        flash(f'Invoice already exists: #{existing["billingo_document_id"]}', 'info')
+        return redirect(url_for('roast_tracker.orders'))
+
+    # Fetch the order from WooCommerce
+    orders = fetch_wc_orders(status='processing')
+    order = next((o for o in orders if o['id'] == order_id), None)
+
+    if not order:
+        # Try completed orders too
+        orders = fetch_wc_orders(status='completed')
+        order = next((o for o in orders if o['id'] == order_id), None)
+
+    if not order:
+        flash('Order not found in WooCommerce', 'error')
+        return redirect(url_for('roast_tracker.orders'))
+
+    billing = order['billing']
+    payment_method = request.form.get('payment_method', 'wire_transfer')
+
+    # Create or find Billingo partner
+    headers = {
+        "X-API-KEY": BILLINGO_API_KEY,
+        "Content-Type": "application/json"
+    }
+
+    # Build partner name
+    partner_name = f"{billing['first_name']} {billing['last_name']}".strip()
+    if billing.get('company'):
+        partner_name = billing['company']
+
+    partner_payload = {
+        "name": partner_name,
+        "address": {
+            "country_code": billing.get('country', 'HU'),
+            "post_code": billing.get('postcode', ''),
+            "city": billing.get('city', ''),
+            "address": billing.get('address_1', '')
+        }
+    }
+    if billing.get('email'):
+        partner_payload["emails"] = [billing['email']]
+    if billing.get('phone'):
+        partner_payload["phone"] = billing['phone']
+
+    partner_response = requests.post(
+        f"{BILLINGO_BASE_URL}/partners",
+        json=partner_payload,
+        headers=headers
+    )
+
+    if partner_response.status_code != 201:
+        flash(f'Failed to create Billingo partner: {partner_response.text}', 'error')
+        return redirect(url_for('roast_tracker.orders'))
+
+    partner_id = partner_response.json()['id']
+
+    # Get LOT assignments for invoice comment
+    lot_assignments = query_db("""
+        SELECT ola.wc_order_item_id, pb.production_lot, rb.lot_number as source_lot
+        FROM order_lot_assignments ola
+        JOIN production_batches pb ON ola.production_batch_id = pb.id
+        LEFT JOIN roast_batches rb ON ola.roast_batch_id = rb.id
+        WHERE ola.wc_order_id = ?
+        ORDER BY ola.wc_order_item_id, ola.slot_number
+    """, (order_id,))
+
+    item_lots = {}
+    for assignment in lot_assignments:
+        item_id = assignment['wc_order_item_id']
+        lot = assignment['source_lot'] or assignment['production_lot']
+        if item_id not in item_lots:
+            item_lots[item_id] = []
+        item_lots[item_id].append(lot)
+
+    # Prepare invoice items
+    invoice_items = []
+    for item in order['line_items']:
+        lots = item_lots.get(item['id'], [])
+        lot_comment = f"LOT: {', '.join(lots)}" if lots else ""
+
+        # Calculate net price from subtotal (which is already net in WC)
+        subtotal = float(item.get('subtotal', 0))
+        quantity = item['quantity']
+        net_price = subtotal / quantity if quantity > 0 else 0
+
+        invoice_items.append({
+            "name": item['name'].strip(),
+            "unit_price": round(net_price, 2),
+            "unit_price_type": "net",
+            "quantity": quantity,
+            "unit": "db",
+            "vat": "27%",
+            "comment": lot_comment
+        })
+
+    # Create invoice
+    today = date.today().isoformat()
+    invoice_payload = {
+        "partner_id": partner_id,
+        "block_id": BILLINGO_INVOICE_BLOCK_ID,
+        "type": "invoice",
+        "fulfillment_date": today,
+        "due_date": today,
+        "payment_method": payment_method,
+        "language": "hu",
+        "currency": order.get('currency', 'HUF'),
+        "conversion_rate": 1,
+        "electronic": True,
+        "paid": True,  # WooCommerce orders are typically already paid
+        "items": invoice_items
+    }
+
+    response = requests.post(
+        f"{BILLINGO_BASE_URL}/documents",
+        json=invoice_payload,
+        headers=headers
+    )
+
+    if response.status_code == 201:
+        document_id = response.json()['id']
+
+        # Save to database
+        conn = get_db()
+        conn.execute("""
+            INSERT INTO wc_order_invoices (wc_order_id, billingo_document_id, billingo_partner_id)
+            VALUES (?, ?, ?)
+        """, (order_id, document_id, partner_id))
+        conn.commit()
+        conn.close()
+
+        flash(f'Invoice #{document_id} created successfully!', 'success')
+    else:
+        flash(f'Failed to create invoice: {response.text}', 'error')
+
+    return redirect(url_for('roast_tracker.orders'))
+
+
+@roast_tracker.route('/wc/orders/<int:order_id>/invoice/download')
+@tracker_login_required
+def wc_download_invoice(order_id):
+    """Download invoice PDF for WooCommerce order"""
+    import requests
+    import io
+    from flask import send_file
+
+    import sys
+    sys.path.insert(0, '..')
+    from app import BILLINGO_API_KEY, BILLINGO_BASE_URL
+
+    invoice = query_db("SELECT billingo_document_id FROM wc_order_invoices WHERE wc_order_id = ?",
+                       (order_id,), one=True)
+
+    if not invoice:
+        flash('No invoice found for this order', 'error')
+        return redirect(url_for('roast_tracker.orders'))
+
+    document_id = invoice['billingo_document_id']
+    headers = {"X-API-KEY": BILLINGO_API_KEY}
+
+    response = requests.get(f"{BILLINGO_BASE_URL}/documents/{document_id}/download", headers=headers)
+
+    if response.status_code == 200:
+        pdf_stream = io.BytesIO(response.content)
+        return send_file(
+            pdf_stream,
+            as_attachment=True,
+            download_name=f"invoice_WC_{order_id}.pdf",
+            mimetype="application/pdf"
+        )
+    else:
+        flash('Failed to download invoice', 'error')
+        return redirect(url_for('roast_tracker.orders'))
+
+
+@roast_tracker.route('/api/b2b/customers')
+@tracker_login_required
+def api_b2b_customers():
+    """Get B2B customers for autocomplete"""
+    customers = query_db("""
+        SELECT id, company_name, email, default_discount_percent, payment_terms_days
+        FROM b2b_customers
+        WHERE is_active = 1
+        ORDER BY company_name
+    """)
+    return jsonify({'status': 'success', 'customers': [dict(c) for c in customers]})
+
+
+@roast_tracker.route('/api/b2b/customer/<int:customer_id>/discounts')
+@tracker_login_required
+def api_b2b_customer_discounts(customer_id):
+    """Get customer's discount structure"""
+    customer = query_db("SELECT default_discount_percent FROM b2b_customers WHERE id = ?",
+                        (customer_id,), one=True)
+    discounts = query_db("""
+        SELECT product_id, discount_percent
+        FROM b2b_customer_discounts
+        WHERE customer_id = ?
+    """, (customer_id,))
+
+    return jsonify({
+        'status': 'success',
+        'default_discount': customer['default_discount_percent'] if customer else 0,
+        'product_discounts': {d['product_id']: d['discount_percent'] for d in discounts}
     })
 
 
