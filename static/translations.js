@@ -80,7 +80,14 @@ const translations = {
         createSession: 'Munkamenet letrehozasa',
         closeSession: 'Munkamenet lezarasa',
         activeSession: 'Aktiv munkamenet',
-        noActiveSession: 'Nincs aktiv munkamenet'
+        noActiveSession: 'Nincs aktiv munkamenet',
+
+        // Low stock alerts (INV-004)
+        lowStockWarning: 'Alacsony keszlet',
+        hideDetails: 'Reszletek elrejtese',
+        showDetails: 'Reszletek mutatasa',
+        criticalStock: 'Kritikus keszlet',
+        outOfStock: 'Elfogyott'
     },
     en: {
         // Environment
@@ -154,7 +161,14 @@ const translations = {
         createSession: 'Create Session',
         closeSession: 'Close Session',
         activeSession: 'Active Session',
-        noActiveSession: 'No active session'
+        noActiveSession: 'No active session',
+
+        // Low stock alerts (INV-004)
+        lowStockWarning: 'Low Stock Warning',
+        hideDetails: 'Hide details',
+        showDetails: 'Show details',
+        criticalStock: 'Critical stock',
+        outOfStock: 'Out of stock'
     }
 };
 

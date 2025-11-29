@@ -228,8 +228,94 @@
             background: var(--warning);
             color: var(--gray-900);
         }
+        .item-tile .stock-badge.critical {
+            background: var(--danger);
+            color: white;
+            animation: pulse 1.5s infinite;
+        }
         .item-tile .stock-badge.out {
             background: var(--danger);
+        }
+
+        /* Low Stock Alert Banner (INV-004) */
+        .low-stock-alert {
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(239, 68, 68, 0.15) 100%);
+            border: 1px solid var(--warning);
+            border-radius: var(--radius);
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            display: none;
+        }
+        .low-stock-alert.visible {
+            display: block;
+        }
+        .low-stock-alert.has-critical {
+            border-color: var(--danger);
+            animation: alertPulse 2s infinite;
+        }
+        @keyframes alertPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.3); }
+            50% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.1); }
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .low-stock-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .low-stock-title {
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: var(--gray-800);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .low-stock-toggle {
+            font-size: 0.75rem;
+            color: var(--gray-500);
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: var(--radius-sm);
+            background: white;
+        }
+        .low-stock-toggle:hover {
+            background: var(--gray-100);
+        }
+        .low-stock-items {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .low-stock-item {
+            background: white;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            border: 1px solid var(--gray-200);
+        }
+        .low-stock-item.critical {
+            border-color: var(--danger);
+            background: rgba(239, 68, 68, 0.1);
+        }
+        .low-stock-item .stock-num {
+            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 8px;
+            background: var(--warning);
+            color: var(--gray-900);
+            font-size: 0.7rem;
+        }
+        .low-stock-item.critical .stock-num {
+            background: var(--danger);
+            color: white;
         }
         .item-tile .lot-badge {
             font-size: 0.65rem;
@@ -297,6 +383,28 @@
             color: var(--gray-500);
             font-size: 0.875rem;
             margin-top: 4px;
+        }
+        /* FIFO recommended LOT styling (INV-005) */
+        .lot-option.recommended {
+            border-color: var(--success);
+            background: rgba(16, 185, 129, 0.05);
+            position: relative;
+        }
+        .lot-option.recommended:hover {
+            border-color: var(--success);
+            background: rgba(16, 185, 129, 0.1);
+        }
+        .fifo-badge {
+            position: absolute;
+            top: -8px;
+            right: 12px;
+            background: var(--success);
+            color: white;
+            font-size: 0.65rem;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 10px;
+            text-transform: uppercase;
         }
 
         /* 500g LOT selection styles */
@@ -1116,6 +1224,19 @@
                 <a href="/prepare_market" style="color: white;" data-i18n="editSession">Munkamenet szerkesztése</a>
             </div>
 
+            <!-- Low Stock Alert Banner (INV-004) -->
+            <div id="lowStockAlert" class="low-stock-alert">
+                <div class="low-stock-header">
+                    <span class="low-stock-title">
+                        ⚠️ <span data-i18n="lowStockWarning">Alacsony készlet</span>
+                    </span>
+                    <span class="low-stock-toggle" onclick="toggleLowStockDetails()" data-i18n="hideDetails">Részletek elrejtése</span>
+                </div>
+                <div id="lowStockItems" class="low-stock-items">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+
             <!-- Search Box -->
             <div class="search-box">
                 <input type="text" id="productSearch" data-i18n-placeholder="searchProducts" placeholder="🔍 Termékek keresése..." oninput="filterProducts()">
@@ -1851,8 +1972,19 @@
             container.innerHTML = html;
         }
 
+        // Low stock thresholds (INV-004) - configurable
+        const LOW_STOCK_THRESHOLD = 3;      // Show warning when <= this
+        const CRITICAL_STOCK_THRESHOLD = 1; // Show critical alert when <= this
+
+        function getStockClass(stock) {
+            if (stock === 0) return 'out';
+            if (stock <= CRITICAL_STOCK_THRESHOLD) return 'critical';
+            if (stock <= LOW_STOCK_THRESHOLD) return 'low';
+            return '';
+        }
+
         function renderProductTile(product) {
-            const stockClass = product.totalStock <= 2 ? 'low' : '';
+            const stockClass = getStockClass(product.totalStock);
             const imageHtml = product.image
                 ? `<img src="${product.image}" alt="${product.name}">`
                 : `<div class="placeholder-img">📦</div>`;
@@ -1919,10 +2051,74 @@
             renderCoffeeItems(searchTerm);
         }
 
+        // Low Stock Alert Functions (INV-004)
+        let lowStockExpanded = true;
+
+        function updateLowStockAlert() {
+            const alert = document.getElementById('lowStockAlert');
+            const itemsContainer = document.getElementById('lowStockItems');
+            if (!alert || !itemsContainer) return;
+
+            // Collect all low stock items from prepared products
+            const lowStockItems = [];
+            Object.entries(byCategory).forEach(([catName, products]) => {
+                products.forEach(product => {
+                    if (product.totalStock > 0 && product.totalStock <= LOW_STOCK_THRESHOLD) {
+                        lowStockItems.push({
+                            name: product.name,
+                            stock: product.totalStock,
+                            isCritical: product.totalStock <= CRITICAL_STOCK_THRESHOLD
+                        });
+                    }
+                });
+            });
+
+            if (lowStockItems.length === 0) {
+                alert.classList.remove('visible', 'has-critical');
+                return;
+            }
+
+            // Sort: critical first, then by stock level
+            lowStockItems.sort((a, b) => {
+                if (a.isCritical !== b.isCritical) return a.isCritical ? -1 : 1;
+                return a.stock - b.stock;
+            });
+
+            const hasCritical = lowStockItems.some(item => item.isCritical);
+            alert.classList.add('visible');
+            alert.classList.toggle('has-critical', hasCritical);
+
+            // Render items
+            itemsContainer.innerHTML = lowStockItems.map(item => `
+                <div class="low-stock-item ${item.isCritical ? 'critical' : ''}">
+                    <span class="stock-num">${item.stock}</span>
+                    <span>${item.name.length > 20 ? item.name.substring(0, 20) + '...' : item.name}</span>
+                </div>
+            `).join('');
+
+            // Update visibility based on expanded state
+            itemsContainer.style.display = lowStockExpanded ? 'flex' : 'none';
+        }
+
+        function toggleLowStockDetails() {
+            lowStockExpanded = !lowStockExpanded;
+            const itemsContainer = document.getElementById('lowStockItems');
+            const toggle = document.querySelector('.low-stock-toggle');
+            if (itemsContainer) {
+                itemsContainer.style.display = lowStockExpanded ? 'flex' : 'none';
+            }
+            if (toggle) {
+                toggle.textContent = lowStockExpanded
+                    ? (currentLang === 'hu' ? 'Részletek elrejtése' : 'Hide details')
+                    : (currentLang === 'hu' ? 'Részletek mutatása' : 'Show details');
+            }
+        }
+
         // Initialize products on page load
         document.addEventListener('DOMContentLoaded', function() {
             renderPreparedProducts();
             renderCoffeeItems();
+            updateLowStockAlert();
         });
 
         function selectPreparedItem(itemId, name, price, vat) {
@@ -1933,6 +2129,7 @@
             }
 
             // Filter to only lots with remaining stock
+            // LOTs are already sorted by lot_number ASC from backend (oldest first for FIFO)
             const availableLots = lots.filter(lot => lot.remaining > 0);
             if (availableLots.length === 0) {
                 showToast('No stock available for this item', 'error');
@@ -1940,10 +2137,10 @@
             }
 
             if (availableLots.length === 1) {
-                // Only one LOT with stock, add directly
+                // Only one LOT with stock, add directly (FIFO: this is the oldest)
                 addPreparedItemWithLot(availableLots[0]);
             } else {
-                // Multiple LOTs, show modal
+                // Multiple LOTs - FIFO: first LOT in list is oldest, will be highlighted
                 showLotModal(itemId, name, price, vat, availableLots);
             }
         }
@@ -1956,8 +2153,11 @@
         function showLotModal(itemId, name, price, vat, lots) {
             currentItemForLot = { itemId, name, price, vat };
             const optionsDiv = document.getElementById('lotOptions');
-            optionsDiv.innerHTML = lots.filter(lot => lot.remaining > 0).map(lot => `
-                <div class="lot-option" onclick="selectLot(${lot.marketSessionItemId}, '${lot.lotNumber}', ${lot.remaining})">
+            const availableLots = lots.filter(lot => lot.remaining > 0);
+            // FIFO (INV-005): First LOT is oldest (recommended)
+            optionsDiv.innerHTML = availableLots.map((lot, index) => `
+                <div class="lot-option ${index === 0 ? 'recommended' : ''}" onclick="selectLot(${lot.marketSessionItemId}, '${lot.lotNumber}', ${lot.remaining})">
+                    ${index === 0 ? `<span class="fifo-badge">${currentLang === 'hu' ? 'Ajánlott (FIFO)' : 'Recommended (FIFO)'}</span>` : ''}
                     <div class="lot-number">LOT: ${lot.lotNumber}</div>
                     <div class="lot-stock">${t('available')}: ${lot.remaining}</div>
                 </div>

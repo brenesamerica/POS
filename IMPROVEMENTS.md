@@ -98,8 +98,8 @@ This document tracks all identified improvements, bugs, and recommendations for 
 | INV-001 | Add stock locking during checkout | ⬜ TODO | Prevent overselling by multiple sellers |
 | INV-002 | Validate quantity_remaining >= quantity before sale | ✅ DONE | market_sale() validates all stock first |
 | INV-003 | Restore stock on receipt cancellation | ✅ DONE | cancel_document() restores stock |
-| INV-004 | Add low stock alerts/warnings | ⬜ TODO | Threshold-based notifications |
-| INV-005 | Implement FIFO for LOT selection | ⬜ TODO | Sell oldest LOTs first |
+| INV-004 | Add low stock alerts/warnings | ✅ DONE | Banner + configurable thresholds (3/1) |
+| INV-005 | Implement FIFO for LOT selection | ✅ DONE | Oldest LOTs highlighted in modal |
 
 ### Session Management
 
@@ -351,10 +351,10 @@ def sell_market_item(item_id, quantity, session_id):
 |-------|-------|------|-------------|------|
 | 1. Critical Fixes | 9 | 9 | 0 | 0 |
 | 2. Code Quality | 23 | 22 | 0 | 1 (deferred) |
-| 3. Business Logic | 14 | 3 | 0 | 11 |
+| 3. Business Logic | 14 | 5 | 0 | 9 |
 | 4. UX Improvements | 12 | 0 | 0 | 12 |
 | 5. Power Features | 11 | 0 | 0 | 11 |
-| **Total** | **69** | **34** | **0** | **35** |
+| **Total** | **69** | **36** | **0** | **33** |
 
 ---
 

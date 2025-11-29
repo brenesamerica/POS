@@ -2001,6 +2001,7 @@ def market_mode():
         return redirect(url_for('prepare_market'))
 
     # Get market session items with remaining quantity > 0, including category and attributes
+    # Order by lot_number ASC to support FIFO (INV-005) - oldest LOTs first
     market_items = query_db("""
         SELECT msi.id, msi.item_id, msi.lot_number, msi.quantity_remaining,
                i.name, i.price, i.vat, i.image_url, c.name as category_name, c.id as category_id,
@@ -2009,7 +2010,7 @@ def market_mode():
         JOIN items i ON msi.item_id = i.id
         LEFT JOIN categories c ON i.category_id = c.id
         WHERE msi.session_id = ? AND msi.quantity_remaining > 0
-        ORDER BY c.name, i.name, msi.lot_number
+        ORDER BY c.name, i.name, msi.lot_number ASC
     """, [active_session[0]])
 
     # Get unique categories from market items for grouping
