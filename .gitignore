@@ -12,6 +12,11 @@ __pycache__/
 # Local settings
 .claude/settings.local.json
 
+# Environment files with secrets
+.env
+.env.local
+.env.*.local
+
 # IDE
 .vscode/
 .idea/

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Cafe Tiko POS{% endblock %}</title>
+    <link rel="icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-32x32.png" sizes="32x32">
+    <link rel="icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-192x192.png" sizes="192x192">
+    <link rel="apple-touch-icon" href="https://cafetiko.com/wp-content/uploads/2023/03/cropped-CafeTiko_Favicon-180x180.png">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* Environment indicator - common across all pages */
+        .env-indicator {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 4px 12px;
+            text-align: center;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            z-index: 1000;
+        }
+        .env-indicator.test {
+            background: var(--warning);
+            color: var(--gray-900);
+        }
+        .env-indicator.prod {
+            background: var(--danger);
+            color: white;
+        }
+        body {
+            padding-top: 28px;
+        }
+
+        /* Language toggle - common across pages with translations */
+        .lang-toggle {
+            position: fixed;
+            bottom: 20px;
+            right: 12px;
+            z-index: 1001;
+            display: flex;
+            gap: 4px;
+            background: white;
+            padding: 4px;
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+        }
+        .lang-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 16px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: transparent;
+            color: var(--gray-500);
+        }
+        .lang-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+        .lang-btn:hover:not(.active) {
+            background: var(--gray-100);
+            color: var(--gray-700);
+        }
+
+        /* Toast notifications */
+        .toast {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 24px;
+            border-radius: var(--radius);
+            color: white;
+            font-weight: 500;
+            z-index: 9999;
+            animation: slideUp 0.3s ease;
+        }
+        @keyframes slideUp {
+            from { transform: translate(-50%, 20px); opacity: 0; }
+            to { transform: translate(-50%, 0); opacity: 1; }
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            body {
+                padding-top: 24px;
+            }
+            .env-indicator {
+                font-size: 0.65rem;
+                padding: 3px 8px;
+            }
+        }
+    </style>
+
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <!-- Environment Indicator -->
+    <div class="env-indicator {{ 'test' if billingo_env == 'test' else 'prod' }}">
+        {% if billingo_env == 'test' %}
+            <span data-i18n="testEnv">TESZT kornyezet</span>
+        {% else %}
+            <span data-i18n="prodEnv">ELES RENDSZER</span>
+        {% endif %}
+    </div>
+
+    {% block lang_toggle %}
+    <!-- Language Toggle - override in child templates if not needed -->
+    <div class="lang-toggle">
+        <button class="lang-btn" data-lang="en" onclick="setLanguage('en')">EN</button>
+        <button class="lang-btn active" data-lang="hu" onclick="setLanguage('hu')">HU</button>
+    </div>
+    {% endblock %}
+
+    {% block content %}{% endblock %}
+
+    <!-- Common scripts -->
+    <script src="{{ url_for('static', filename='translations.js') }}"></script>
+    <script src="{{ url_for('static', filename='api.js') }}"></script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

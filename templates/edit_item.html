@@ -49,6 +49,7 @@
     <div class="container">
         <h1>Edit Item</h1>
         <form action="{{ url_for('edit_item', id=item[0]) }}" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label for="name">Item Name:</label>
             <input type="text" id="name" name="name" value="{{ item[1] }}" required>
 

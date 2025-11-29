@@ -9,11 +9,26 @@ import time
 import hashlib
 import secrets
 from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
+from flask_wtf.csrf import CSRFProtect
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from prometheus_flask_exporter import PrometheusMetrics
 
 
 app = Flask(__name__)
+
+# CSRF Protection
+csrf = CSRFProtect(app)
+
+# Rate Limiting
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://"
+)
 
 # Prometheus metrics
 metrics = PrometheusMetrics(app, group_by='endpoint')
@@ -31,6 +46,41 @@ orders_pending = Gauge('pos_orders_pending', 'Number of pending orders', ['type'
 
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-key-change-in-production")
 
+
+# Standardized API response helpers (REF-004)
+def api_success(message: str = "Success", data: dict | list | None = None, status_code: int = 200) -> tuple:
+    """Return a standardized success response.
+
+    Args:
+        message: Success message to return
+        data: Optional data payload (dict or list)
+        status_code: HTTP status code (default 200)
+
+    Returns:
+        Tuple of (jsonify response, status_code)
+    """
+    response = {"status": "success", "message": message}
+    if data is not None:
+        response["data"] = data
+    return jsonify(response), status_code
+
+
+def api_error(message: str, status_code: int = 400, error_code: str | None = None) -> tuple:
+    """Return a standardized error response.
+
+    Args:
+        message: Error message to return
+        status_code: HTTP status code (default 400)
+        error_code: Optional error code for client-side handling
+
+    Returns:
+        Tuple of (jsonify response, status_code)
+    """
+    response = {"status": "error", "message": message}
+    if error_code:
+        response["error_code"] = error_code
+    return jsonify(response), status_code
+
 # Register Roast Tracker Blueprint
 from roast_tracker.routes import roast_tracker
 app.register_blueprint(roast_tracker)
@@ -42,7 +92,7 @@ def from_json_filter(value):
     if value:
         try:
             return json.loads(value)
-        except:
+        except (json.JSONDecodeError, TypeError):
             return {}
     return {}
 
@@ -56,8 +106,8 @@ logging.basicConfig(level=logging.DEBUG)
 BILLINGO_ENV = os.environ.get("BILLINGO_ENV", "test")  # Default to test for safety
 
 BILLINGO_API_KEYS = {
-    "test": "dc7626a6-9ed2-11ef-9815-0254eb6072a0",
-    "prod": "75757e6a-a040-11ef-b7e8-06ac9760f844"
+    "test": os.environ.get("BILLINGO_API_KEY_TEST", ""),
+    "prod": os.environ.get("BILLINGO_API_KEY_PROD", "")
 }
 
 # Block IDs for each environment
@@ -88,14 +138,71 @@ logging.info(f"Using database: {DATABASE}")
 active_sales = {}
 
 # Database helper functions
-def query_db(query, args=(), one=False):
+def query_db(query: str, args: tuple = (), one: bool = False) -> list | sqlite3.Row | None:
+    """Execute a database query and return results.
+
+    Args:
+        query: SQL query string
+        args: Query parameters tuple
+        one: If True, return single row or None; if False, return list
+
+    Returns:
+        sqlite3.Row objects which support both index (row[0]) and dict-like (row['column']) access.
+    """
     conn = sqlite3.connect(DATABASE)
+    conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     cur.execute(query, args)
     rv = cur.fetchall()
     conn.commit()
     conn.close()
     return (rv[0] if rv else None) if one else rv
+
+
+def execute_transaction(queries: list[tuple[str, tuple]]) -> bool:
+    """Execute multiple queries in a single transaction (DB-010).
+
+    Args:
+        queries: List of (query, args) tuples to execute
+
+    Returns:
+        True if successful
+
+    Raises:
+        Exception: Re-raises any database error after rollback
+    """
+    conn = sqlite3.connect(DATABASE)
+    conn.row_factory = sqlite3.Row
+    try:
+        cur = conn.cursor()
+        cur.execute("BEGIN IMMEDIATE")
+        for query, args in queries:
+            cur.execute(query, args)
+        conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
+
+
+def validate_price(price: float | int | str | None) -> float:
+    """Validate that price is non-negative (DB-007).
+
+    Args:
+        price: The price value to validate (can be float, int, string, or None)
+
+    Returns:
+        Validated price as float
+
+    Raises:
+        ValueError: If price is negative
+    """
+    price = float(price) if price is not None else 0.0
+    if price < 0:
+        raise ValueError("Price cannot be negative")
+    return price
 
 def init_db():
     with sqlite3.connect(DATABASE) as conn:
@@ -213,30 +320,79 @@ def init_db():
         # Create default admin user if no users exist
         cur.execute("SELECT COUNT(*) FROM users")
         if cur.fetchone()[0] == 0:
-            # Default admin: username=admin, password=admin (should be changed immediately!)
-            salt = secrets.token_hex(32)
-            password_hash = hashlib.sha256(('admin' + salt).encode()).hexdigest()
+            # Generate a random password for the default admin
+            default_password = secrets.token_urlsafe(12)
+            password_hash, _ = hash_password(default_password)
             cur.execute("""
                 INSERT INTO users (username, password_hash, salt, role)
                 VALUES (?, ?, ?, 'admin')
-            """, ('admin', password_hash, salt))
-            logging.info("Created default admin user (username: admin, password: admin)")
+            """, ('admin', password_hash, None))
+            logging.warning("=" * 60)
+            logging.warning("INITIAL ADMIN CREDENTIALS - CHANGE IMMEDIATELY!")
+            logging.warning(f"Username: admin")
+            logging.warning(f"Password: {default_password}")
+            logging.warning("=" * 60)
+
+        # Create indexes for performance (DB-001 to DB-005)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_market_sessions_closed_at ON market_sessions(closed_at)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_market_session_items_session ON market_session_items(session_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_items_category ON items(category_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_market_sales_session ON market_sales(session_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
+
+        # Migration: Add audit columns (DB-008) - updated_at for items and categories
+        cur.execute("PRAGMA table_info(items)")
+        item_columns = [col[1] for col in cur.fetchall()]
+        if 'updated_at' not in item_columns:
+            cur.execute("ALTER TABLE items ADD COLUMN updated_at TIMESTAMP")
+        if 'deleted_at' not in item_columns:
+            cur.execute("ALTER TABLE items ADD COLUMN deleted_at TIMESTAMP")
+
+        cur.execute("PRAGMA table_info(categories)")
+        cat_columns = [col[1] for col in cur.fetchall()]
+        if 'updated_at' not in cat_columns:
+            cur.execute("ALTER TABLE categories ADD COLUMN updated_at TIMESTAMP")
+        if 'deleted_at' not in cat_columns:
+            cur.execute("ALTER TABLE categories ADD COLUMN deleted_at TIMESTAMP")
 
         conn.commit()
 
 
-# Password hashing functions
-def hash_password(password, salt=None):
-    """Hash a password with a salt"""
-    if salt is None:
-        salt = secrets.token_hex(32)
-    password_hash = hashlib.sha256((password + salt).encode()).hexdigest()
-    return password_hash, salt
+# Password hashing functions using werkzeug (PBKDF2)
+def hash_password(password: str, salt: str | None = None) -> tuple[str, None]:
+    """Hash a password using werkzeug's PBKDF2.
+
+    Args:
+        password: Plain text password to hash
+        salt: Deprecated, kept for backwards compatibility (werkzeug handles salt internally)
+
+    Returns:
+        Tuple of (password_hash, None) - salt is embedded in hash string
+    """
+    password_hash = generate_password_hash(password, method='pbkdf2:sha256', salt_length=16)
+    return password_hash, None
 
 
-def verify_password(password, password_hash, salt):
-    """Verify a password against its hash"""
-    return hashlib.sha256((password + salt).encode()).hexdigest() == password_hash
+def verify_password(password: str, password_hash: str, salt: str | None = None) -> bool:
+    """Verify a password against its hash.
+
+    Supports both old SHA256 format and new werkzeug PBKDF2 format for migration.
+
+    Args:
+        password: Plain text password to verify
+        password_hash: Stored hash to compare against
+        salt: Legacy salt for old SHA256 hashes
+
+    Returns:
+        True if password matches, False otherwise
+    """
+    # Check if this is a werkzeug hash (starts with method identifier)
+    if password_hash.startswith('pbkdf2:') or password_hash.startswith('scrypt:'):
+        return check_password_hash(password_hash, password)
+    # Legacy SHA256 format (for existing users until they change password)
+    elif salt:
+        return hashlib.sha256((password + salt).encode()).hexdigest() == password_hash
+    return False
 
 
 # Authentication decorators
@@ -277,9 +433,9 @@ def admin_required(f):
     return decorated_function
 
 # WooCommerce API settings
-WOOCOMMERCE_URL = 'https://cafetiko.com'
-WOOCOMMERCE_CONSUMER_KEY = 'ck_7a1052542a4c7a0470a8f2d4cfc65c47ea0cbfe7'
-WOOCOMMERCE_CONSUMER_SECRET = 'cs_9e74a7cac66169b23daf4594f7868bedae810b9f'
+WOOCOMMERCE_URL = os.environ.get("WOOCOMMERCE_URL", "https://cafetiko.com")
+WOOCOMMERCE_CONSUMER_KEY = os.environ.get("WOOCOMMERCE_CONSUMER_KEY", "")
+WOOCOMMERCE_CONSUMER_SECRET = os.environ.get("WOOCOMMERCE_CONSUMER_SECRET", "")
 
 def wc_api_request(endpoint, params=None):
     """Make a request to WooCommerce REST API"""
@@ -609,8 +765,106 @@ def fetch_categories_with_products(lang=None):
     logging.info(f"Fetched {len(categories)} categories from WooCommerce (lang={lang})")
     return categories
 
+def fetch_catalog_data(languages: list[str]) -> tuple[list[dict], list[dict], dict]:
+    """Fetch products and categories from WooCommerce for specified languages.
+
+    Args:
+        languages: List of language codes (e.g., ['hu', 'en'])
+
+    Returns:
+        Tuple of (products, categories, summary) where products and categories are
+        deduplicated lists, and summary contains fetch statistics.
+    """
+    all_products = []
+    all_categories = []
+    summary = {
+        'languages': languages,
+        'categories_per_lang': {},
+        'products_per_lang': {},
+        'total_categories': 0,
+        'total_products': 0,
+        'products_with_attributes': 0
+    }
+
+    for lang in languages:
+        categories = fetch_categories_with_products(lang)
+        products = fetch_products(lang)
+
+        summary['categories_per_lang'][lang] = len(categories)
+        summary['products_per_lang'][lang] = len(products)
+
+        all_categories.extend(categories)
+        all_products.extend(products)
+
+    # Deduplicate by ID
+    unique_products = {p['id']: p for p in all_products if p and p.get('id')}
+    unique_categories = {c['id']: c for c in all_categories if c and c.get('id')}
+
+    return list(unique_products.values()), list(unique_categories.values()), summary
+
+
+def save_catalog_to_db(products: list[dict], categories: list[dict], summary: dict) -> dict:
+    """Save fetched catalog data to database.
+
+    Args:
+        products: List of product dicts with keys: id, name, price, category_id, etc.
+        categories: List of category dicts with keys: id, name
+        summary: Summary dict to update with insert counts
+
+    Returns:
+        Updated summary dict with total_categories, total_products, products_with_attributes
+    """
+    with sqlite3.connect(DATABASE) as conn:
+        cursor = conn.cursor()
+
+        # Only delete WooCommerce-imported data, keep manually added items
+        cursor.execute("DELETE FROM categories WHERE source = 'woocommerce'")
+        cursor.execute("DELETE FROM items WHERE source = 'woocommerce'")
+        logging.info("Cleared old WooCommerce imports (kept manual items)")
+
+        # Get the set of category IDs that have active products
+        active_category_ids = {p['category_id'] for p in products if p and p.get('category_id')}
+
+        # Insert only categories that have active products
+        categories_inserted = 0
+        for category in categories:
+            if category['id'] in active_category_ids:
+                cursor.execute("""
+                    INSERT OR REPLACE INTO categories (id, name, source)
+                    VALUES (?, ?, 'woocommerce')
+                """, (category['id'], category['name']))
+                categories_inserted += 1
+                logging.debug(f"Inserted category: {category}")
+
+        # Insert products
+        products_inserted = 0
+        products_with_attrs = 0
+        for product in products:
+            if product:
+                attrs_json = json.dumps(product.get('attributes', {})) if product.get('attributes') else None
+                if product.get('attributes'):
+                    products_with_attrs += 1
+
+                cursor.execute("""
+                    INSERT OR REPLACE INTO items (id, name, price, vat, category_id, image_url, description, attributes, source)
+                    VALUES (?, ?, ?, '27%', ?, ?, ?, ?, 'woocommerce')
+                """, (product['id'], product['name'], product['price'], product['category_id'],
+                      product['image_url'], product['description'], attrs_json))
+                products_inserted += 1
+
+        conn.commit()
+
+    summary['total_categories'] = categories_inserted
+    summary['total_products'] = products_inserted
+    summary['products_with_attributes'] = products_with_attrs
+
+    logging.info(f"Catalog updated: {categories_inserted} categories, {products_inserted} products")
+    return summary
+
+
 @app.route('/update_catalog', methods=['POST'])
 @login_required
+@csrf.exempt  # JSON API endpoint
 def update_catalog_route():
     try:
         # Get languages from request (default to HU only)
@@ -632,6 +886,55 @@ def update_catalog_route():
     except Exception as e:
         logging.error("Error updating catalog: %s", e)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+def save_catalog_to_db_with_progress(products, categories, summary):
+    """Save catalog to database, yielding progress updates for SSE streaming.
+
+    This is a generator variant of save_catalog_to_db for streaming updates.
+    """
+    with sqlite3.connect(DATABASE) as conn:
+        cursor = conn.cursor()
+
+        cursor.execute("DELETE FROM categories WHERE source = 'woocommerce'")
+        cursor.execute("DELETE FROM items WHERE source = 'woocommerce'")
+
+        active_category_ids = {p['category_id'] for p in products if p and p.get('category_id')}
+
+        categories_inserted = 0
+        for category in categories:
+            if category['id'] in active_category_ids:
+                cursor.execute("""
+                    INSERT OR REPLACE INTO categories (id, name, source)
+                    VALUES (?, ?, 'woocommerce')
+                """, (category['id'], category['name']))
+                categories_inserted += 1
+
+        yield f"data: {json.dumps({'type': 'progress', 'message': f'Imported {categories_inserted} categories'})}\n\n"
+
+        products_inserted = 0
+        products_with_attrs = 0
+        for product in products:
+            if product:
+                attrs_json = json.dumps(product.get('attributes', {})) if product.get('attributes') else None
+                if product.get('attributes'):
+                    products_with_attrs += 1
+
+                cursor.execute("""
+                    INSERT OR REPLACE INTO items (id, name, price, vat, category_id, image_url, description, attributes, source)
+                    VALUES (?, ?, ?, '27%', ?, ?, ?, ?, 'woocommerce')
+                """, (product['id'], product['name'], product['price'], product['category_id'],
+                      product['image_url'], product['description'], attrs_json))
+                products_inserted += 1
+
+                if products_inserted % 10 == 0:
+                    yield f"data: {json.dumps({'type': 'progress', 'message': f'Imported {products_inserted} products...'})}\n\n"
+
+        conn.commit()
+
+    summary['total_categories'] = categories_inserted
+    summary['total_products'] = products_inserted
+    summary['products_with_attributes'] = products_with_attrs
+
 
 @app.route('/update_catalog_stream')
 @login_required
@@ -658,7 +961,7 @@ def update_catalog_stream():
                 'products_with_attributes': 0
             }
 
-            # Fetch products and categories for each language
+            # Fetch with progress updates
             for lang in languages:
                 yield f"data: {json.dumps({'type': 'status', 'message': f'Fetching categories for {lang.upper()}...'})}\n\n"
                 categories = fetch_categories_with_products(lang)
@@ -672,72 +975,16 @@ def update_catalog_stream():
                 all_products.extend(products)
                 yield f"data: {json.dumps({'type': 'progress', 'message': f'Fetched {len(products)} products for {lang.upper()}'})}\n\n"
 
-            # Deduplicate by ID
-            unique_products = {}
-            for product in all_products:
-                if product and product.get('id'):
-                    unique_products[product['id']] = product
-
-            unique_categories = {}
-            for category in all_categories:
-                if category and category.get('id'):
-                    unique_categories[category['id']] = category
-
+            # Deduplicate
+            unique_products = {p['id']: p for p in all_products if p and p.get('id')}
+            unique_categories = {c['id']: c for c in all_categories if c and c.get('id')}
             products = list(unique_products.values())
             categories = list(unique_categories.values())
 
             yield f"data: {json.dumps({'type': 'status', 'message': 'Saving to database...'})}\n\n"
 
-            with sqlite3.connect(DATABASE) as conn:
-                cursor = conn.cursor()
-
-                # Only delete WooCommerce-imported data
-                cursor.execute("DELETE FROM categories WHERE source = 'woocommerce'")
-                cursor.execute("DELETE FROM items WHERE source = 'woocommerce'")
-
-                # Get active category IDs
-                active_category_ids = set()
-                for product in products:
-                    if product and product.get('category_id'):
-                        active_category_ids.add(product['category_id'])
-
-                # Insert categories
-                categories_inserted = 0
-                for category in categories:
-                    if category['id'] in active_category_ids:
-                        cursor.execute("""
-                            INSERT OR REPLACE INTO categories (id, name, source)
-                            VALUES (?, ?, 'woocommerce')
-                        """, (category['id'], category['name']))
-                        categories_inserted += 1
-
-                yield f"data: {json.dumps({'type': 'progress', 'message': f'Imported {categories_inserted} categories'})}\n\n"
-
-                # Insert products
-                products_inserted = 0
-                products_with_attrs = 0
-                for product in products:
-                    if product:
-                        attrs_json = json.dumps(product.get('attributes', {})) if product.get('attributes') else None
-                        if product.get('attributes'):
-                            products_with_attrs += 1
-
-                        cursor.execute("""
-                            INSERT OR REPLACE INTO items (id, name, price, vat, category_id, image_url, description, attributes, source)
-                            VALUES (?, ?, ?, '27%', ?, ?, ?, ?, 'woocommerce')
-                        """, (product['id'], product['name'], product['price'], product['category_id'],
-                              product['image_url'], product['description'], attrs_json))
-                        products_inserted += 1
-
-                        # Send progress every 10 products
-                        if products_inserted % 10 == 0:
-                            yield f"data: {json.dumps({'type': 'progress', 'message': f'Imported {products_inserted} products...'})}\n\n"
-
-                conn.commit()
-
-            summary['total_categories'] = categories_inserted
-            summary['total_products'] = products_inserted
-            summary['products_with_attributes'] = products_with_attrs
+            # Save with progress updates
+            yield from save_catalog_to_db_with_progress(products, categories, summary)
 
             yield f"data: {json.dumps({'type': 'complete', 'message': 'Catalog updated successfully!', 'summary': summary})}\n\n"
 
@@ -751,100 +998,15 @@ def update_catalog_stream():
     })
 
 def update_catalog(languages=None):
-    """Update catalog from WooCommerce for specified languages"""
+    """Update catalog from WooCommerce for specified languages.
+
+    Uses fetch_catalog_data() and save_catalog_to_db() helper functions.
+    """
     if languages is None:
         languages = ['hu']
 
-    all_products = []
-    all_categories = []
-    summary = {
-        'languages': languages,
-        'categories_per_lang': {},
-        'products_per_lang': {},
-        'total_categories': 0,
-        'total_products': 0,
-        'products_with_attributes': 0
-    }
-
-    # Fetch products and categories for each language
-    for lang in languages:
-        products = fetch_products(lang)
-        categories = fetch_categories_with_products(lang)
-
-        summary['products_per_lang'][lang] = len(products)
-        summary['categories_per_lang'][lang] = len(categories)
-
-        all_products.extend(products)
-        all_categories.extend(categories)
-
-    # Deduplicate by ID (in case same product appears in multiple languages)
-    unique_products = {}
-    for product in all_products:
-        if product and product.get('id'):
-            unique_products[product['id']] = product
-
-    unique_categories = {}
-    for category in all_categories:
-        if category and category.get('id'):
-            unique_categories[category['id']] = category
-
-    products = list(unique_products.values())
-    categories = list(unique_categories.values())
-
-    with sqlite3.connect(DATABASE) as conn:
-        cursor = conn.cursor()
-
-        # Only delete WooCommerce-imported data, keep manually added items
-        cursor.execute("DELETE FROM categories WHERE source = 'woocommerce'")
-        cursor.execute("DELETE FROM items WHERE source = 'woocommerce'")
-        logging.info("Cleared old WooCommerce imports (kept manual items)")
-
-        # Get the set of category IDs that have active products
-        active_category_ids = set()
-        for product in products:
-            if product and product.get('category_id'):
-                active_category_ids.add(product['category_id'])
-
-        # Insert only categories that have active products (mark as woocommerce source)
-        categories_inserted = 0
-        for category in categories:
-            if category['id'] in active_category_ids:
-                cursor.execute("""
-                    INSERT OR REPLACE INTO categories (id, name, source)
-                    VALUES (?, ?, 'woocommerce')
-                """, (category['id'], category['name']))
-                categories_inserted += 1
-                logging.debug(f"Inserted category: {category}")
-            else:
-                logging.debug(f"Skipped category (no active products): {category}")
-
-        # Insert products (mark as woocommerce source)
-        products_inserted = 0
-        products_with_attrs = 0
-        for product in products:
-            if product:  # Only insert if product details are valid
-                # Serialize attributes to JSON
-                attrs_json = json.dumps(product.get('attributes', {})) if product.get('attributes') else None
-                if product.get('attributes'):
-                    products_with_attrs += 1
-
-                cursor.execute("""
-                    INSERT OR REPLACE INTO items (id, name, price, vat, category_id, image_url, description, attributes, source)
-                    VALUES (?, ?, ?, '27%', ?, ?, ?, ?, 'woocommerce')
-                """, (product['id'], product['name'], product['price'], product['category_id'],
-                      product['image_url'], product['description'], attrs_json))
-                products_inserted += 1
-                logging.debug(f"Inserted item: {product['name']}")
-
-        conn.commit()
-
-        summary['total_categories'] = categories_inserted
-        summary['total_products'] = products_inserted
-        summary['products_with_attributes'] = products_with_attrs
-
-        logging.info(f"Catalog updated: {categories_inserted} categories, {products_inserted} products (langs: {languages})")
-
-    return summary
+    products, categories, summary = fetch_catalog_data(languages)
+    return save_catalog_to_db(products, categories, summary)
 
 @app.route('/verify_data', methods=['GET'])
 @login_required
@@ -871,8 +1033,8 @@ def update_gauge_metrics():
         # B2B pending orders
         b2b_pending = query_db("SELECT COUNT(*) as count FROM b2b_orders WHERE status = 'pending'", one=True)
         orders_pending.labels(type='b2b').set(b2b_pending['count'] if b2b_pending else 0)
-    except:
-        pass  # Don't fail requests if metrics update fails
+    except Exception as e:
+        logging.debug(f"Metrics update skipped: {e}")  # Don't fail requests if metrics update fails
 
 # Inject billingo_env and user info into all templates automatically
 @app.context_processor
@@ -887,6 +1049,7 @@ def inject_globals():
 # ==================== AUTHENTICATION ROUTES ====================
 
 @app.route('/login', methods=['GET', 'POST'])
+@limiter.limit("5 per minute")
 def login():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
@@ -1015,6 +1178,7 @@ def edit_user(id):
 
 @app.route('/delete_user/<int:id>', methods=['POST'])
 @admin_required
+@csrf.exempt  # JSON API endpoint
 def delete_user(id):
     # Prevent deleting yourself
     if session.get('user_id') == id:
@@ -1039,7 +1203,7 @@ def main_menu():
 @app.route('/manage_categories')
 @login_required
 def manage_categories():
-    categories = query_db("SELECT * FROM categories")
+    categories = query_db("SELECT * FROM categories WHERE deleted_at IS NULL")
     return render_template('manage_categories.html', categories=categories)
 
 @app.route('/add_category', methods=['GET', 'POST'])
@@ -1065,8 +1229,10 @@ def edit_category(id):
 
 @app.route('/delete_category/<int:id>', methods=['POST'])
 @login_required
+@csrf.exempt  # JSON API endpoint
 def delete_category(id):
-    query_db("DELETE FROM categories WHERE id = ?", [id])
+    # Soft delete - set deleted_at timestamp instead of removing (DB-009)
+    query_db("UPDATE categories SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", [id])
     return jsonify({"status": "success", "message": "Category deleted successfully"})
 
 @app.route('/manage_items')
@@ -1079,16 +1245,16 @@ def manage_items():
             SELECT items.id, items.name, items.price, items.vat, categories.name AS category_name, items.attributes, items.archived
             FROM items
             LEFT JOIN categories ON items.category_id = categories.id
-            WHERE items.archived = 1
+            WHERE items.archived = 1 AND items.deleted_at IS NULL
         """)
     else:
         items = query_db("""
             SELECT items.id, items.name, items.price, items.vat, categories.name AS category_name, items.attributes, items.archived
             FROM items
             LEFT JOIN categories ON items.category_id = categories.id
-            WHERE COALESCE(items.archived, 0) = 0
+            WHERE COALESCE(items.archived, 0) = 0 AND items.deleted_at IS NULL
         """)
-    categories = query_db("SELECT * FROM categories ORDER BY name")
+    categories = query_db("SELECT * FROM categories WHERE deleted_at IS NULL ORDER BY name")
 
     # Extract unique origins and roasts from attributes
     origins = set()
@@ -1101,7 +1267,7 @@ def manage_items():
                     origins.add(attrs['Origin'])
                 if attrs.get('Roast'):
                     roasts.add(attrs['Roast'])
-            except:
+            except (json.JSONDecodeError, TypeError, KeyError):
                 pass
 
     return render_template('manage_items.html',
@@ -1115,13 +1281,18 @@ def manage_items():
 @app.route('/add_item', methods=['GET', 'POST'])
 @login_required
 def add_item():
-    categories = query_db("SELECT * FROM categories")
+    categories = query_db("SELECT * FROM categories WHERE deleted_at IS NULL")
     if request.method == 'POST':
         name = request.form.get('name')
-        price = float(request.form.get('price'))
+        try:
+            price = validate_price(request.form.get('price'))
+        except ValueError as e:
+            return render_template('add_item.html', categories=categories, error=str(e))
         category_id = request.form.get('category_id')
         vat = request.form.get('vat', '27%')
-        query_db("INSERT INTO items (name, price, vat, category_id, source) VALUES (?, ?, ?, ?, 'manual')", (name, price, vat, category_id))
+        query_db("""INSERT INTO items (name, price, vat, category_id, source, updated_at)
+                    VALUES (?, ?, ?, ?, 'manual', CURRENT_TIMESTAMP)""",
+                 (name, price, vat, category_id))
         return redirect(url_for('manage_items'))
     return render_template('add_item.html', categories=categories)
 
@@ -1129,24 +1300,31 @@ def add_item():
 @login_required
 def edit_item(id):
     item = query_db("SELECT * FROM items WHERE id = ?", [id], one=True)
-    categories = query_db("SELECT * FROM categories")
+    categories = query_db("SELECT * FROM categories WHERE deleted_at IS NULL")
     if request.method == 'POST':
         name = request.form.get('name')
-        price = float(request.form.get('price'))
-        category_id = request.form.get('category_ids')
+        try:
+            price = validate_price(request.form.get('price'))
+        except ValueError as e:
+            return render_template('edit_item.html', item=item, categories=categories, error=str(e))
+        category_id = request.form.get('category_id')
         vat = request.form.get('vat', '27%')
-        query_db("UPDATE items SET name = ?, price = ?, vat = ?, category_id = ? WHERE id = ?", (name, price, vat, category_id, id))
+        query_db("""UPDATE items SET name = ?, price = ?, vat = ?, category_id = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?""", (name, price, vat, category_id, id))
         return redirect(url_for('manage_items'))
     return render_template('edit_item.html', item=item, categories=categories)
 
 @app.route('/delete_item/<int:id>', methods=['POST'])
 @login_required
+@csrf.exempt  # JSON API endpoint
 def delete_item(id):
-    query_db("DELETE FROM items WHERE id = ?", [id])
+    # Soft delete - set deleted_at timestamp instead of removing (DB-009)
+    query_db("UPDATE items SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", [id])
     return jsonify({"status": "success", "message": "Item deleted successfully"})
 
 @app.route('/archive_item/<int:id>', methods=['POST'])
 @login_required
+@csrf.exempt  # JSON API endpoint
 def archive_item(id):
     """Archive an item (hide from inventory and low stock alerts)"""
     query_db("UPDATE items SET archived = 1 WHERE id = ?", [id])
@@ -1154,6 +1332,7 @@ def archive_item(id):
 
 @app.route('/unarchive_item/<int:id>', methods=['POST'])
 @login_required
+@csrf.exempt  # JSON API endpoint
 def unarchive_item(id):
     """Unarchive an item (restore to active inventory)"""
     query_db("UPDATE items SET archived = 0 WHERE id = ?", [id])
@@ -1170,6 +1349,8 @@ def create_receipt_page():
 
 @app.route('/create_receipt', methods=['POST'])
 @login_required
+@limiter.limit("30 per minute")
+@csrf.exempt  # API endpoint - uses JSON, CSRF not applicable
 def create_receipt():
     try:
         # List of valid payment methods
@@ -1260,6 +1441,8 @@ def create_receipt():
 
         if response.status_code == 201:
             last_receipt_data = response.json()
+            # Store in session for download_pos_print
+            session['last_receipt_id'] = last_receipt_data.get('id')
             receipts_created.labels(env=BILLINGO_ENV, payment_method=payment_method).inc()
             return jsonify({"status": "success", "data": last_receipt_data}), 201
         else:
@@ -1272,14 +1455,19 @@ def create_receipt():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/download_pos_print', methods=['GET'])
+@app.route('/download_pos_print/<int:document_id>', methods=['GET'])
 @login_required
-def download_pos_print():
-    logging.debug("Current last_receipt_data: %s", last_receipt_data)
+def download_pos_print(document_id=None):
+    # Get document_id from URL path, query param, or session
+    if document_id is None:
+        document_id = request.args.get('document_id')
+    if document_id is None:
+        document_id = session.get('last_receipt_id')
 
-    if last_receipt_data and "id" in last_receipt_data:
-        document_id = last_receipt_data["id"]
-    else:
-        return jsonify({"status": "error", "message": "Document ID is missing or last receipt data is empty."}), 404
+    logging.debug("Downloading POS print for document_id: %s", document_id)
+
+    if not document_id:
+        return jsonify({"status": "error", "message": "Document ID is missing. Please provide document_id parameter or create a receipt first."}), 404
 
     headers = {
         "X-API-KEY": BILLINGO_API_KEY,
@@ -1298,12 +1486,14 @@ def download_pos_print():
 
 @app.route('/cancel_document/<int:document_id>', methods=['POST'])
 @login_required
+@csrf.exempt  # JSON API endpoint
 def cancel_document(document_id):
-    """Cancel/Sztornó a document via Billingo API and mark sale as cancelled"""
+    """Cancel/Sztornó a document via Billingo API, mark sale as cancelled, and restore stock (INV-003)"""
     try:
         data = request.get_json() or {}
         cancellation_reason = data.get('cancellation_reason', 'Sztornó')
         sale_id = data.get('sale_id')  # Optional: to mark in database
+        restore_stock = data.get('restore_stock', True)  # Default to restoring stock
 
         headers = {
             "X-API-KEY": BILLINGO_API_KEY,
@@ -1323,10 +1513,37 @@ def cancel_document(document_id):
 
         if response.status_code == 200:
             cancel_data = response.json()
+            stock_restored = False
+
+            # Get the sale record to find items for stock restoration
+            sale = None
+            if sale_id:
+                sale = query_db("SELECT id, items_json FROM market_sales WHERE id = ?", [sale_id], one=True)
+            else:
+                sale = query_db("SELECT id, items_json FROM market_sales WHERE receipt_id = ?", [str(document_id)], one=True)
+
+            # Restore stock if requested and sale has items (INV-003)
+            if restore_stock and sale and sale['items_json']:
+                try:
+                    items = json.loads(sale['items_json'])
+                    for item in items:
+                        market_session_item_id = item.get('market_session_item_id')
+                        quantity = item.get('quantity', 1)
+                        if market_session_item_id and quantity:
+                            query_db("""
+                                UPDATE market_session_items
+                                SET quantity_remaining = quantity_remaining + ?
+                                WHERE id = ?
+                            """, (quantity, market_session_item_id))
+                    stock_restored = True
+                    logging.info(f"Stock restored for cancelled sale {sale['id']}")
+                except (json.JSONDecodeError, KeyError) as e:
+                    logging.warning(f"Could not restore stock for sale: {e}")
 
             # Mark the sale as cancelled in the database
-            # First try by sale_id, then by receipt_id
-            if sale_id:
+            if sale:
+                query_db("UPDATE market_sales SET cancelled = 1 WHERE id = ?", [sale['id']])
+            elif sale_id:
                 query_db("UPDATE market_sales SET cancelled = 1 WHERE id = ?", [sale_id])
             else:
                 query_db("UPDATE market_sales SET cancelled = 1 WHERE receipt_id = ?", [str(document_id)])
@@ -1334,6 +1551,7 @@ def cancel_document(document_id):
             return jsonify({
                 "status": "success",
                 "message": "Document cancelled successfully",
+                "stock_restored": stock_restored,
                 "data": cancel_data
             }), 200
         else:
@@ -1440,11 +1658,13 @@ def prepare_market():
 
 @app.route('/create_market_session', methods=['POST'])
 @login_required
+@csrf.exempt  # JSON API endpoint
 def create_market_session():
     try:
         data = request.get_json()
         name = data.get('name', 'Market Session')
         initial_cash = float(data.get('initial_cash', 0))
+        copy_from_session_id = data.get('copy_from_session_id')  # SES-001: Copy unsold items
 
         # Close any existing active session first
         query_db("UPDATE market_sessions SET closed_at = CURRENT_TIMESTAMP WHERE closed_at IS NULL")
@@ -1452,13 +1672,65 @@ def create_market_session():
         # Create new session with initial cash
         query_db("INSERT INTO market_sessions (name, initial_cash) VALUES (?, ?)", (name, initial_cash))
 
-        return jsonify({"status": "success", "message": "Market session created"})
+        # Get the new session ID
+        new_session = query_db("SELECT id FROM market_sessions ORDER BY id DESC LIMIT 1", one=True)
+        new_session_id = new_session['id'] if new_session else None
+
+        items_copied = 0
+        # SES-001: Copy remaining items from previous session
+        if copy_from_session_id and new_session_id:
+            # Get items with remaining quantity from the source session
+            source_items = query_db("""
+                SELECT item_id, lot_number, quantity_remaining
+                FROM market_session_items
+                WHERE session_id = ? AND quantity_remaining > 0
+            """, [copy_from_session_id])
+
+            for item in source_items:
+                query_db("""
+                    INSERT INTO market_session_items (session_id, item_id, lot_number, quantity_prepared, quantity_remaining)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (new_session_id, item['item_id'], item['lot_number'], item['quantity_remaining'], item['quantity_remaining']))
+                items_copied += 1
+
+        return jsonify({
+            "status": "success",
+            "message": "Market session created",
+            "session_id": new_session_id,
+            "items_copied": items_copied
+        })
     except Exception as e:
         logging.error(f"Error creating market session: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
+
+@app.route('/get_previous_sessions', methods=['GET'])
+@login_required
+def get_previous_sessions():
+    """Get list of previous sessions for copy-from selection (SES-001)"""
+    sessions = query_db("""
+        SELECT
+            ms.id,
+            ms.name,
+            ms.created_at,
+            ms.closed_at,
+            COUNT(msi.id) as item_count,
+            SUM(msi.quantity_remaining) as total_remaining
+        FROM market_sessions ms
+        LEFT JOIN market_session_items msi ON ms.id = msi.session_id AND msi.quantity_remaining > 0
+        WHERE ms.closed_at IS NOT NULL
+        GROUP BY ms.id
+        ORDER BY ms.created_at DESC
+        LIMIT 10
+    """)
+    return jsonify({
+        "status": "success",
+        "sessions": [dict(s) for s in sessions]
+    })
+
 @app.route('/close_market_session', methods=['POST'])
 @login_required
+@csrf.exempt  # JSON API endpoint
 def close_market_session():
     try:
         # Get summary before closing
@@ -1483,6 +1755,7 @@ def close_market_session():
 
 @app.route('/reopen_market_session/<int:session_id>', methods=['POST'])
 @login_required
+@csrf.exempt  # JSON API endpoint
 def reopen_market_session(session_id):
     """Reopen a closed market session"""
     try:
@@ -1515,6 +1788,7 @@ def reopen_market_session(session_id):
 
 @app.route('/record_market_sale', methods=['POST'])
 @login_required
+@csrf.exempt  # JSON API endpoint
 def record_market_sale():
     """Record a sale in the market session"""
     try:
@@ -1605,6 +1879,7 @@ def get_session_summary_route():
 
 @app.route('/add_market_item', methods=['POST'])
 @login_required
+@csrf.exempt  # JSON API endpoint
 def add_market_item():
     try:
         data = request.get_json()
@@ -1679,6 +1954,7 @@ def add_market_item():
 
 @app.route('/remove_market_item/<int:id>', methods=['POST'])
 @login_required
+@csrf.exempt  # JSON API endpoint
 def remove_market_item(id):
     try:
         query_db("DELETE FROM market_session_items WHERE id = ?", [id])
@@ -1689,6 +1965,7 @@ def remove_market_item(id):
 
 @app.route('/update_market_item_quantity/<int:id>', methods=['POST'])
 @login_required
+@csrf.exempt  # JSON API endpoint
 def update_market_item_quantity(id):
     try:
         data = request.get_json()
@@ -1756,7 +2033,7 @@ def market_mode():
                     origins.add(attrs['Origin'])
                 if attrs.get('Roast'):
                     roasts.add(attrs['Roast'])
-            except:
+            except (json.JSONDecodeError, TypeError, KeyError):
                 pass
 
     # Get coffee shop items (from categories marked as coffee shop, excluding archived)
@@ -1791,17 +2068,50 @@ def market_mode():
 
 @app.route('/market_sale', methods=['POST'])
 @login_required
+@csrf.exempt  # JSON API endpoint
 def market_sale():
-    """Process a sale and update market item quantities"""
+    """Process a sale and update market item quantities with stock validation"""
     try:
         data = request.get_json()
         market_item_sales = data.get('market_item_sales', [])  # List of {market_session_item_id, quantity}
 
+        # First, validate all stock levels before making any changes
+        insufficient_stock = []
         for sale in market_item_sales:
             item_id = sale.get('market_session_item_id')
             quantity = sale.get('quantity', 1)
 
-            # Decrease remaining quantity
+            # Check current stock
+            item = query_db("""
+                SELECT msi.quantity_remaining, i.name
+                FROM market_session_items msi
+                JOIN items i ON msi.item_id = i.id
+                WHERE msi.id = ?
+            """, (item_id,), one=True)
+
+            if not item:
+                insufficient_stock.append({"item_id": item_id, "error": "Item not found"})
+            elif item[0] < quantity:
+                insufficient_stock.append({
+                    "item_id": item_id,
+                    "name": item[1],
+                    "requested": quantity,
+                    "available": item[0]
+                })
+
+        if insufficient_stock:
+            return jsonify({
+                "status": "error",
+                "message": "Insufficient stock for one or more items",
+                "insufficient_stock": insufficient_stock
+            }), 400
+
+        # All stock validated, now update quantities
+        for sale in market_item_sales:
+            item_id = sale.get('market_session_item_id')
+            quantity = sale.get('quantity', 1)
+
+            # Decrease remaining quantity (with safety check in WHERE clause)
             query_db("""
                 UPDATE market_session_items
                 SET quantity_remaining = quantity_remaining - ?
@@ -1945,6 +2255,7 @@ def customer_display():
 
 @app.route('/api/update_sale', methods=['POST'])
 @login_required
+@csrf.exempt  # JSON API endpoint
 def update_sale():
     """Update the current sale for a user (called from market_mode)"""
     try:
